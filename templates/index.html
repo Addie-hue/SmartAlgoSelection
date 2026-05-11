@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Algorithm Predictor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 40px 20px; display: flex; justify-content: center; }
+        .dashboard { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 800px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; border: 1px solid #334155; }
+        .full-width { grid-column: 1 / -1; }
+        h2 { margin-top: 0; color: #38bdf8; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #334155; padding-bottom: 10px;}
+        label { display: block; margin: 15px 0 5px; font-weight: 600; font-size: 14px; color: #94a3b8; }
+        select, input { width: 100%; padding: 12px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #f8fafc; font-size: 14px; box-sizing: border-box; }
+        button { background: #0284c7; color: #fff; border: none; padding: 14px; width: 100%; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 20px; transition: 0.2s; }
+        button:hover { background: #0369a1; }
+        .result-panel { background: #0f172a; padding: 20px; border-radius: 8px; border-left: 4px solid #38bdf8; }
+        .highlight-text { font-size: 22px; font-weight: bold; color: #38bdf8; margin: 5px 0 15px; }
+        .chart-container { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
+        .preview-box { font-family: monospace; background: #000; padding: 10px; border-radius: 4px; font-size: 12px; color: #4ade80; word-break: break-all; }
+        
+        /* Mobile responsiveness */
+        @media (max-width: 768px) { .dashboard { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <div class="full-width">
+        <h2>🤖 Smart Algorithm Selection Engine</h2>
+    </div>
+
+    <div class="input-section">
+        <form method="POST">
+            <label>Problem Category:</label>
+            <select name="problem_type">
+                <option value="Sorting">Sorting (Divide & Conquer / Brute Force)</option>
+                <option value="Knapsack">Knapsack (Dynamic Programming)</option>
+                <option value="Shortest Path">Shortest Path (Floyd-Warshall)</option>
+                <option value="Multistage Graph">Multistage Graph Routing</option>
+            </select>
+
+            <label>Input Size (N items/vertices):</label>
+            <input type="number" name="input_size" required placeholder="e.g., 5000">
+
+            <button type="submit">Predict & Execute Run</button>
+        </form>
+    </div>
+
+    <div class="results-section">
+        {% if result_data %}
+        <div class="result-panel">
+            <div style="font-size: 13px; color: #94a3b8; text-transform: uppercase;">AI Optimal Prediction</div>
+            <div class="highlight-text">{{ result_data.prediction }}</div>
+            
+            <div style="font-size: 13px; color: #94a3b8; margin-bottom: 5px;">Generated Data Preview</div>
+            <div class="preview-box">{{ result_data.preview }}</div>
+        </div>
+        {% else %}
+        <div class="result-panel" style="border-left-color: #475569; color: #94a3b8;">
+            Awaiting system input to begin algorithmic profiling...
+        </div>
+        {% endif %}
+    </div>
+
+    {% if result_data %}
+    <div class="full-width chart-container">
+        <h3 style="color: #94a3b8; font-size: 14px; text-transform: uppercase; margin-top: 0;">Performance Analysis Graph (Lower is Better)</h3>
+        <canvas id="performanceChart" height="80"></canvas>
+    </div>
+
+   <script>
+        const ctx = document.getElementById('performanceChart').getContext('2d');
+        
+        // Wrapping the Flask tags in quotes fixes the VS Code linter errors!
+        const predTime = parseFloat("{{ result_data.pred_time }}");
+        const compTime = parseFloat("{{ result_data.comp_time }}");
+        const predLabel = "{{ result_data.prediction }} (AI Choice)";
+        const compLabel = "{{ result_data.comp_algo }} (Competitor)";
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [predLabel, compLabel],
+                datasets: [{
+                    label: 'Execution Time (Seconds)',
+                    data: [predTime, compTime],
+                    backgroundColor: [
+                        'rgba(56, 189, 248, 0.8)', // Blue for AI
+                        'rgba(248, 113, 113, 0.8)'  // Red for Competitor
+                    ],
+                    borderColor: [
+                        'rgb(56, 189, 248)',
+                        'rgb(248, 113, 113)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Makes it a horizontal bar chart
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8' }
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { color: '#f8fafc', font: { size: 14 } }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    </script>
+    {% endif %}
+
+</div>
+
+</body>
+</html>

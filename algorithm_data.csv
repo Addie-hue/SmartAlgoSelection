@@ -1,0 +1,29 @@
+Problem_Type,Input_Size,Best_Algorithm
+Sorting,10,Selection Sort
+Knapsack,10,Knapsack_01 (DP)
+Shortest Path,10,Floyd-Warshall (DP)
+Multistage Graph,10,Multistage (DP)
+Sorting,50,Insertion Sort
+Knapsack,50,Knapsack_01 (DP)
+Shortest Path,50,Floyd-Warshall (DP)
+Multistage Graph,50,Multistage (DP)
+Sorting,100,Quick Sort
+Knapsack,100,Knapsack_01 (DP)
+Shortest Path,100,Floyd-Warshall (DP)
+Multistage Graph,100,Multistage (DP)
+Sorting,200,Quick Sort
+Knapsack,200,Knapsack_01 (DP)
+Shortest Path,200,Floyd-Warshall (DP)
+Multistage Graph,200,Multistage (DP)
+Sorting,500,Quick Sort
+Knapsack,500,Knapsack_01 (DP)
+Shortest Path,500,Floyd-Warshall (DP)
+Multistage Graph,500,Multistage (DP)
+Sorting,800,Quick Sort
+Knapsack,800,Knapsack_01 (DP)
+Shortest Path,800,Floyd-Warshall (DP)
+Multistage Graph,800,Multistage (DP)
+Sorting,1000,Quick Sort
+Knapsack,1000,Knapsack_01 (DP)
+Shortest Path,1000,Floyd-Warshall (DP)
+Multistage Graph,1000,Multistage (DP)
