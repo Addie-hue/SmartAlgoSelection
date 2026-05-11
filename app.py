@@ -6,15 +6,26 @@ from flask import Flask, render_template, request, jsonify
 import random
 import time
 import warnings
-
 import sort as sa
 import dp
 import greedy as gr
+import math
 from analyzer import analyze_problem
 from knowledge_base import get_algorithms
 
 warnings.filterwarnings("ignore")
 app = Flask(__name__)
+
+
+def clean_json_data(o):
+    """Recursively replace float('inf') and float('-inf') with None for JSON compliance."""
+    if isinstance(o, float) and (math.isinf(o) or math.isnan(o)):
+        return None
+    if isinstance(o, dict):
+        return {k: clean_json_data(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [clean_json_data(x) for x in o]
+    return o
 
 
 # ═══ BENCHMARK RUNNERS ═══════════════════════════════════════════════════
@@ -54,7 +65,7 @@ def benchmark_knapsack(size, data=None):
         W = size * 10
         preview_desc = f"Knapsack problem with {size} random items"
     
-    # Convert weights/capacity to int for 0/1 DP (required for table indexing)
+    # Convert weights/capacity to int for 0/1 DP
     wt_int = [int(w) for w in wt]
     W_int = int(W)
     
@@ -71,11 +82,12 @@ def benchmark_shortest_path(size, is_all_pairs=False, data=None):
     if gr_data and gr_data.get('matrix'):
         graph = gr_data['matrix']
         V = len(graph)
-        preview_desc = "User-provided adjacency matrix"
+        graph = [[float(v) if v is not None else float('inf') for v in row] for row in graph]
+        preview_desc = "Detected graph structure"
     else:
         V = min(size, 100)
         graph = [[random.randint(1, 100) if i != j else 0 for j in range(V)] for i in range(V)]
-        preview_desc = f"Weighted graph with {V} random vertices"
+        preview_desc = f"Random graph ({V} nodes)"
     
     if is_all_pairs:
         start = time.perf_counter()
@@ -99,11 +111,12 @@ def benchmark_mst(size, data=None):
     if gr_data and gr_data.get('matrix'):
         graph = gr_data['matrix']
         V = len(graph)
-        preview_desc = "User-provided adjacency matrix"
+        graph = [[float(v) if v is not None else float('inf') for v in row] for row in graph]
+        preview_desc = "Detected graph structure"
     else:
         V = min(size, 100)
         graph = [[random.randint(1, 100) if i != j else 0 for j in range(V)] for i in range(V)]
-        preview_desc = f"Graph with {V} random vertices"
+        preview_desc = f"Random graph ({V} nodes)"
     
     times = {
         "Prim's Algorithm": gr.prims_algo(graph),
@@ -134,33 +147,19 @@ def benchmark_staged(size, data=None):
 # ═══ SAMPLE QUESTIONS ═════════════════════════════════════════════════════
 
 SAMPLE_QUESTIONS = {
-    "BRUTE FORCE (Sorting)": [
-        "OVERALL: Compare all sorting algorithms on a list of 25 numbers",
-        "BUBBLE SORT: Arrange the numbers [34, 12, 5, 78, 23, 45, 11] in increasing order",
-        "SELECTION SORT: Put these 15 student marks [85, 92, 70, 65, 88, 95...] in ascending order"
+    "Sorting": [
+        "Arrange the numbers [34, 12, 5, 78, 23, 45, 11] in increasing order",
+        "Put these 15 student marks [85, 92, 70, 65, 88, 95] in ascending order",
+        "Order 100 employee records from lowest to highest salary"
     ],
-    "DECREASE AND CONQUER": [
-        "INSERTION SORT: Order 100 employee records from lowest to highest salary"
+    "Knapsack": [
+        "Optimize a bag with capacity 50 using fractional selection",
+        "Find the best subset of items. Weights=[2,5,10,12,15], Values=[3,6,12,18,20], Capacity=50"
     ],
-    "DIVIDE AND CONQUER": [
-        "OVERALL: Benchmark large-scale sorting on 5000 random values",
-        "MERGE SORT: Organize 2000 sensor readings efficiently",
-        "QUICK SORT: Arrange a list of 1500 coordinates by their X-value"
-    ],
-    "GREEDY METHOD (MST & Paths)": [
-        "OVERALL (Shortest Path): Compare Dijkstra vs others for 50 intersections",
-        "OVERALL (MST): Compare Prim's vs Kruskal's for a 30-node computer network",
-        "KNAPSACK (DECIMAL): Optimize a bag with capacity 50 using fractional selection",
-        "PRIMS ALGO: Find the minimum cost wiring for a new office layout with 15 nodes (MST)",
-        "KRUSKAL ALGO: Connect 20 cities into a single network with minimum total distance (MST)",
-        "DIJKSTRA'S: Find the fastest single-source route through 40 intersections"
-    ],
-    "DYNAMIC PROGRAMMING": [
-        "OVERALL: Compare Greedy (Fractional) vs DP (0/1) for a 20-item Knapsack optimization scenario",
-        "KNAPSACK 0/1: Find the best subset of 20 discrete items. Weights=[2,5,10,12,15], Values=[3,6,12,18,20], Capacity=50",
-        "FLOYD-WARSHALL: Calculate all-pairs shortest paths for every city in a 20-node network",
-        "WARSHALL'S ALGO: Compute reachability (Transitive Closure) for all nodes in a 25-vertex graph",
-        "MULTISTAGE GRAPH: Find the shortest path through 5 stages of a 40-node pipeline network"
+    "Graphs": [
+        "Find the fastest route between every city in a 20-node network",
+        "Connect 20 cities into a single network with minimum total distance (MST)",
+        "Find the shortest path through 5 stages of a 40-node pipeline network"
     ]
 }
 
@@ -174,6 +173,9 @@ def home():
 def sample_questions():
     return jsonify(SAMPLE_QUESTIONS)
 
+@app.route("/heartbeat")
+def heartbeat():
+    return jsonify({"status": "alive"})
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -192,23 +194,27 @@ def analyze():
 
         # Dispatch to relevant benchmark group
         ex_data = analysis.get("extracted_data")
-        if domain == "ordering":
-            bench = benchmark_sorting(input_size, ex_data)
-        elif domain == "optimization":
-            bench = benchmark_knapsack(input_size, ex_data)
-        elif domain == "pathfinding":
-            bench = benchmark_shortest_path(input_size, analysis.get("is_all_pairs", False), ex_data)
-        elif domain == "mst":
-            bench = benchmark_mst(input_size, ex_data)
-        elif domain == "staged":
-            bench = benchmark_staged(input_size, ex_data)
-        else:
-            return jsonify({"error": "No benchmark available for this domain."}), 400
+        try:
+            if domain == "ordering":
+                bench = benchmark_sorting(input_size, ex_data)
+            elif domain == "optimization":
+                bench = benchmark_knapsack(input_size, ex_data)
+            elif domain == "pathfinding":
+                bench = benchmark_shortest_path(input_size, analysis.get("is_all_pairs", False), ex_data)
+            elif domain == "mst":
+                bench = benchmark_mst(input_size, ex_data)
+            elif domain == "staged":
+                bench = benchmark_staged(input_size, ex_data)
+            else:
+                return jsonify({"error": "No benchmark available for this domain."}), 400
+        except Exception as e:
+            print(f"ALGO ERROR: {str(e)}")
+            return jsonify({"error": f"Algorithm Error: {str(e)}"}), 400
 
         algos_data = get_algorithms(domain)
         times = bench["times"]
         
-        # Identify the best (fastest) algorithm in the group
+        # Identify the best (fastest) algorithm
         best_name = min(times, key=times.get)
         best_time = times[best_name]
 
@@ -237,18 +243,16 @@ def analyze():
                 "speedup_vs_best": speedup,
             })
 
-        # Sort so best is at top
         algo_list.sort(key=lambda x: (not x["is_best"], x["actual_time"]))
-
         best_info = algos_data[best_name]
         
-        return jsonify({
+        response_data = {
             "analysis": {
                 "original_statement": analysis["original_statement"],
                 "domain": domain,
                 "paradigm": analysis["paradigm"],
                 "paradigm_reasoning": analysis["paradigm_reasoning"],
-                "selection_justification": analysis["selection_justification"], # Justification for choosing these algos
+                "selection_justification": analysis["selection_justification"],
                 "input_size": input_size,
                 "size_source": analysis["size_source"],
                 "matched_keywords": analysis["matched_keywords"],
@@ -265,11 +269,13 @@ def analyze():
                 "preview": bench["preview"],
                 "data_desc": bench["data_desc"],
             },
-        })
+        }
+        
+        return jsonify(clean_json_data(response_data))
     except Exception as e:
         print(f"CRITICAL ERROR: {str(e)}")
         return jsonify({"error": f"Server Error: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5000)

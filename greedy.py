@@ -64,7 +64,7 @@ def kruskals_algo(graph):
     V = len(graph)
     edges = []
     for i in range(V):
-        for j in range(i + 1, V):
+        for j in range(V):
             if 0 < graph[i][j] < float('inf'):
                 edges.append((graph[i][j], i, j))
     
@@ -72,9 +72,15 @@ def kruskals_algo(graph):
     
     parent = list(range(V))
     def find(i):
-        if parent[i] == i:
-            return i
-        return find(parent[i])
+        root = i
+        while parent[root] != root:
+            root = parent[root]
+        # Path compression (optional but good)
+        while parent[i] != root:
+            next_node = parent[i]
+            parent[i] = root
+            i = next_node
+        return root
     
     def union(i, j):
         root_i = find(i)

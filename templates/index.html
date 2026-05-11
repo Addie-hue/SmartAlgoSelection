@@ -6,74 +6,27 @@
     <title>SmartAlgoSelection — AI Algorithm Analyzer</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 <div class="app-container">
 
     <header class="header">
-        <div class="header-badge">⚡ AI-Powered Engine</div>
-        <h1>Smart Algorithm Selection</h1>
-        <p>Describe your problem in plain English. The AI detects the problem type, extracts inputs, selects the best paradigm, and benchmarks every applicable algorithm.</p>
+        <div class="logo-container">
+            <div class="header-badge">⚡ AI-Powered Engine</div>
+            <h1>Smart Algorithm Selection</h1>
+            <p>Describe your problem in plain English. The AI detects the problem type, extracts inputs, selects the best paradigm, and benchmarks every applicable algorithm.</p>
+        </div>
+
+        <div class="status-badge status-checking" id="connectionStatus">
+            <div class="status-dot"></div>
+            <span class="status-text">Connecting...</span>
+        </div>
     </header>
 
     <!-- INPUT SECTION -->
     <section class="glass-card input-section">
         <h2><span class="icon">🧠</span> Describe Your Problem</h2>
         <textarea id="problemStatement" placeholder="e.g., Arrange the numbers [34, 12, 5, 78, 23] from smallest to largest..." rows="4"></textarea>
-
-        <!-- Step 1: Image OCR for Problem Text -->
-        <div class="image-upload-area" id="imageUploadArea">
-            <div class="upload-zone" id="textDropzone">
-                <div class="upload-icon">📝</div>
-                <div class="upload-title">Scan Problem Text</div>
-                <div class="upload-hint">Upload image of the question / problem description</div>
-                <input type="file" id="textImageInput" accept="image/*" hidden>
-                <button class="upload-mini-btn" onclick="document.getElementById('textImageInput').click()">Browse Image</button>
-            </div>
-            
-            <div class="ocr-status" id="ocrStatus" style="display:none">
-                <div class="spinner-small"></div>
-                <span>Extracting text...</span>
-            </div>
-            
-            <div class="ocr-result" id="ocrResult" style="display:none">
-                <div class="ocr-label">📝 Detected Text (Edit if needed):</div>
-                <textarea id="ocrText" rows="3"></textarea>
-                <button class="use-text-btn" onclick="useOcrText()">Apply to Description ↓</button>
-            </div>
-        </div>
-
-        <!-- Step 2: Interactive Graph Architect -->
-        <div class="graph-architect glass-card">
-            <h3>🕸️ Interactive Graph Architect</h3>
-            <p class="architect-hint">Add connections to build your graph. Watch the live preview update!</p>
-            
-            <div class="architect-layout">
-                <div class="architect-controls">
-                    <div class="input-row">
-                        <input type="text" id="edgeFrom" placeholder="From (A)" class="mini-input">
-                        <input type="text" id="edgeTo" placeholder="To (B)" class="mini-input">
-                        <input type="number" id="edgeWeight" placeholder="Weight (5)" class="mini-input">
-                        <button class="add-edge-btn" onclick="addEdge()">Add Edge +</button>
-                    </div>
-                    
-                    <div class="edge-list-container">
-                        <div class="edge-list-header">Active Connections:</div>
-                        <div id="edgeList" class="edge-list">
-                            <div class="no-edges">No connections added yet.</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="architect-preview">
-                    <div class="preview-label">Live Preview</div>
-                    <div id="graphPreview" class="graph-svg-container">
-                        <svg id="liveGraphSvg" viewBox="0 0 400 300"></svg>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Sample Questions Toggle -->
         <button class="sample-toggle-btn" onclick="toggleSamples()">
@@ -86,7 +39,7 @@
             <span class="example-chip" data-prompt="Arrange the numbers [34, 12, 5, 78, 23, 45, 11, 67] from smallest to largest">Sort given array</span>
             <span class="example-chip" data-prompt="Organize 5000 random values in ascending order">Sort 5000 values</span>
             <span class="example-chip" data-prompt="Given items with weights = [2, 3, 4, 5] and values = [3, 4, 5, 6], capacity = 8, maximize total value">Knapsack with data</span>
-            <span class="example-chip" data-prompt="Find minimum travel distance between every pair of 40 cities connected by roads">Shortest paths</span>
+            <span class="example-chip" data-prompt="Find minimum travel distance between cities: A-B: 5, B-C: 10, C-A: 2">Shortest paths</span>
             <span class="example-chip" data-prompt="Order 100 employee records from lowest to highest salary">Sort 100 records</span>
         </div>
 
@@ -144,139 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('problemStatement').focus();
 });
 
-document.getElementById('problemStatement').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); analyzeStatement(); }
-});
-
-// ═══ GRAPH ARCHITECT LOGIC ═══
-let edges = [];
-let nodes = new Set();
-
-function addEdge() {
-    const fromInput = document.getElementById('edgeFrom');
-    const toInput = document.getElementById('edgeTo');
-    const weightInput = document.getElementById('edgeWeight');
-    
-    const from = fromInput.value.trim().toUpperCase();
-    const to = toInput.value.trim().toUpperCase();
-    const weight = weightInput.value.trim();
-    
-    if (!from || !to || !weight) { alert("Please fill all edge fields."); return; }
-    
-    edges.push({ from, to, weight: parseFloat(weight) });
-    nodes.add(from); nodes.add(to);
-    
-    updateEdgeList();
-    renderGraph();
-    
-    // Reset and focus
-    toInput.value = '';
-    weightInput.value = '';
-    fromInput.focus();
-}
-
-function removeEdge(index) {
-    edges.splice(index, 1);
-    nodes = new Set();
-    edges.forEach(e => { nodes.add(e.from); nodes.add(e.to); });
-    updateEdgeList();
-    renderGraph();
-}
-
-function updateEdgeList() {
-    const list = document.getElementById('edgeList');
-    if (edges.length === 0) {
-        list.innerHTML = '<div class="no-edges">No connections added yet.</div>';
-        return;
-    }
-    
-    list.innerHTML = edges.map((e, i) => `
-        <div class="edge-item">
-            <span><strong>${e.from}</strong> ↔ <strong>${e.to}</strong> (wt: ${e.weight})</span>
-            <button class="remove-btn" onclick="removeEdge(${i})">×</button>
-        </div>
-    `).join('');
-}
-
-function renderGraph() {
-    const svg = document.getElementById('liveGraphSvg');
-    svg.innerHTML = '';
-    const nodeArray = Array.from(nodes);
-    const nodePositions = {};
-    const centerX = 200, centerY = 150, radius = 100;
-    
-    nodeArray.forEach((node, i) => {
-        const angle = (i / nodeArray.length) * 2 * Math.PI;
-        nodePositions[node] = {
-            x: centerX + radius * Math.cos(angle),
-            y: centerY + radius * Math.sin(angle)
-        };
-    });
-    
-    edges.forEach(e => {
-        const start = nodePositions[e.from];
-        const end = nodePositions[e.to];
-        if (!start || !end) return;
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        line.setAttribute("x1", start.x); line.setAttribute("y1", start.y);
-        line.setAttribute("x2", end.x); line.setAttribute("y2", end.y);
-        line.setAttribute("stroke", "#60a5fa"); line.setAttribute("stroke-width", "2");
-        line.setAttribute("opacity", "0.5");
-        svg.appendChild(line);
-        
-        const weight = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        weight.setAttribute("x", (start.x + end.x) / 2); weight.setAttribute("y", (start.y + end.y) / 2 - 5);
-        weight.setAttribute("fill", "#60a5fa"); weight.setAttribute("font-size", "10");
-        weight.setAttribute("text-anchor", "middle");
-        weight.textContent = e.weight;
-        svg.appendChild(weight);
-    });
-    
-    nodeArray.forEach(node => {
-        const pos = nodePositions[node];
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("cx", pos.x); circle.setAttribute("cy", pos.y); circle.setAttribute("r", "15");
-        circle.setAttribute("fill", "#1e293b"); circle.setAttribute("stroke", "#60a5fa"); circle.setAttribute("stroke-width", "2");
-        svg.appendChild(circle);
-        
-        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        text.setAttribute("x", pos.x); text.setAttribute("y", pos.y + 5);
-        text.setAttribute("fill", "white"); text.setAttribute("font-size", "12"); text.setAttribute("text-anchor", "middle");
-        text.textContent = node;
-        svg.appendChild(text);
-    });
-}
-
-// ═══ OCR LOGIC ═══
-const textDropzone = document.getElementById('textDropzone');
-const textImageInput = document.getElementById('textImageInput');
-
-textDropzone.addEventListener('dragover', e => { e.preventDefault(); textDropzone.classList.add('drag-over'); });
-textDropzone.addEventListener('dragleave', () => textDropzone.classList.remove('drag-over'));
-textDropzone.addEventListener('drop', e => {
-    e.preventDefault(); textDropzone.classList.remove('drag-over');
-    if (e.dataTransfer.files.length) processTextImage(e.dataTransfer.files[0]);
-});
-textImageInput.addEventListener('change', e => { if (e.target.files.length) processTextImage(e.target.files[0]); });
-
-async function processTextImage(file) {
-    const status = document.getElementById('ocrStatus');
-    const result = document.getElementById('ocrResult');
-    status.style.display = 'flex'; result.style.display = 'none';
-    try {
-        const { data: { text } } = await Tesseract.recognize(file, 'eng');
-        document.getElementById('ocrText').value = text.trim();
-        status.style.display = 'none'; result.style.display = 'block';
-    } catch (err) {
-        status.style.display = 'none';
-        alert("OCR failed: " + err.message);
-    }
-}
-
-function useOcrText() {
-    document.getElementById('problemStatement').value = document.getElementById('ocrText').value;
-}
-
 // ═══ SAMPLE QUESTIONS ═══
 let samplesLoaded = false;
 async function toggleSamples() {
@@ -318,9 +138,7 @@ function useSampleQ(el) {
     const text = el.textContent.trim();
     document.getElementById('problemStatement').value = text;
     document.getElementById('problemStatement').focus();
-    // Smoothly close panel after selection
     document.getElementById('samplePanel').style.display = 'none';
-    // Trigger auto-scroll to input
     document.getElementById('problemStatement').scrollIntoView({behavior:'smooth', block:'center'});
 }
 
@@ -328,23 +146,12 @@ function useSampleQ(el) {
 let chartInstance = null;
 
 async function analyzeStatement() {
-    let baseStmt = document.getElementById('problemStatement').value.trim();
+    const stmt = document.getElementById('problemStatement').value.trim();
     const btn = document.getElementById('analyzeBtn');
     const errEl = document.getElementById('errorMsg');
     const resEl = document.getElementById('results');
     
-    // If no text but graph exists, provide a default context
-    if (!baseStmt && edges.length > 0) {
-        baseStmt = "Analyze the structure and properties of the following graph.";
-    }
-    
-    if (!baseStmt) { showError('Please enter a problem description or build a graph.'); return; }
-    
-    // Auto-inject graph data if edges exist
-    let stmt = baseStmt;
-    if (edges.length > 0) {
-        stmt += "\n\nGraph Connections: " + edges.map(e => `(${e.from}, ${e.to}, ${e.weight})`).join(', ');
-    }
+    if (!stmt) { showError('Please enter a problem description.'); return; }
     
     btn.classList.add('loading'); btn.disabled = true;
     errEl.style.display = 'none'; resEl.style.display = 'none';
@@ -357,8 +164,8 @@ async function analyzeStatement() {
         if (!r.ok) { showError(data.error || 'Analysis failed.'); return; }
         renderResults(data);
     } catch(e) { 
-        console.error(e);
-        showError('Connection error: Is the Python server running? Try restarting it.'); 
+        console.error("ANALYSIS ERROR:", e);
+        showError(`Error: ${e.message || 'Connection failed'}. Is the Python server running?`); 
     }
     finally { btn.classList.remove('loading'); btn.disabled = false; }
 }
@@ -415,7 +222,7 @@ function renderExtracted(ext) {
         card.style.display = 'none'; return;
     }
     card.style.display = 'block';
-    let html = '<div class="glass-card extracted-card"><h3>📥 Extracted Input Data (from your question)</h3><div class="extracted-grid">';
+    let html = '<div class="glass-card extracted-card"><h3>📥 Extracted Input Data</h3><div class="extracted-grid">';
     
     if (ext.array) {
         html += `<div class="extracted-item"><span class="extracted-label">Array to Sort</span><code>[${ext.array.join(', ')}]</code></div>`;
@@ -430,13 +237,8 @@ function renderExtracted(ext) {
 
     if (ext.graph && ext.graph.matrix) {
         const m = ext.graph.matrix;
-        const matrixStr = m.map(row => `[${row.map(x => x === Infinity || x === null ? '∞' : x).join(',')}]`).join(', ');
+        const matrixStr = m.map(row => `[${row.map(x => x === null ? '∞' : x).join(',')}]`).join(', ');
         html += `<div class="extracted-item"><span class="extracted-label">Adjacency Matrix</span><code>[${matrixStr}]</code></div>`;
-        
-        if (ext.graph.nodes) {
-            const mapping = ext.graph.nodes.map((n, i) => `${n}→${i}`).join(', ');
-            html += `<div class="extracted-item"><span class="extracted-label">Node Mapping</span><code>${mapping}</code></div>`;
-        }
     }
     
     html += '</div></div>';
@@ -474,8 +276,15 @@ function renderPreview(b) {
 }
 
 function renderChart(algos) {
+    if (typeof Chart === 'undefined') {
+        console.warn("Chart.js not loaded. Skipping chart rendering.");
+        document.getElementById('perfChart').parentElement.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">📊 Chart.js could not be loaded. Please check your internet connection.</div>';
+        return;
+    }
     if (chartInstance) chartInstance.destroy();
-    const ctx = document.getElementById('perfChart').getContext('2d');
+    const canvas = document.getElementById('perfChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     const pColors = {
         'Brute Force':'rgba(248,113,113,0.8)','Decrease and Conquer':'rgba(167,139,250,0.8)',
         'Divide and Conquer':'rgba(56,189,248,0.8)','Dynamic Programming':'rgba(251,191,36,0.8)',
@@ -540,10 +349,34 @@ function renderCards(algos) {
             <div class="detail-section-title when-title">◉ Best When</div>
             <ul class="detail-list when">${a.best_when.map(w=>`<li>${w}</li>`).join('')}</ul>
             ${a.is_best
-                ?`<div class="why-chosen-banner">✓ CHOSEN — Fastest benchmark time and well-suited for the detected input characteristics.</div>`
-                :`<div class="why-not-banner">✗ NOT CHOSEN — ${a.cons[0]}${a.speedup_vs_best?` (${a.speedup_vs_best}× slower in benchmark)`:''}</div>`}
+                ?`<div class="why-chosen-banner">✓ CHOSEN — Fastest benchmark time.</div>`
+                :`<div class="why-not-banner">✗ NOT CHOSEN — ${a.cons[0]}${a.speedup_vs_best?` (${a.speedup_vs_best}× slower)`:''}</div>`}
         </div>`).join('');
 }
+// ═══ CONNECTION CHECK ═══
+async function checkConnection() {
+    const badge = document.getElementById('connectionStatus');
+    if (!badge) return;
+    const dot = badge.querySelector('.status-dot');
+    const text = badge.querySelector('.status-text');
+    
+    try {
+        const r = await fetch('/heartbeat');
+        if (r.ok) {
+            badge.className = 'status-badge status-online';
+            if (text) text.textContent = 'Server Online';
+        } else {
+            throw new Error();
+        }
+    } catch (e) {
+        badge.className = 'status-badge status-offline';
+        if (text) text.textContent = 'Server Offline';
+    }
+}
+
+// Check connection every 5 seconds
+setInterval(checkConnection, 5000);
+checkConnection();
 </script>
 </body>
 </html>
