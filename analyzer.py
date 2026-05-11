@@ -9,7 +9,8 @@ DOMAIN_KEYWORDS = {
         "arrange", "order", "ascending", "descending", "smallest to largest",
         "largest to smallest", "organize", "rank", "position", "sequence",
         "increasing", "decreasing", "rearrange", "list in order", "put in order",
-        "low to high", "high to low", "sort", "sorted", "sorting", "marks", "scores",
+        "low to high", "high to low", "lowest to highest", "highest to lowest",
+        "sort", "sorted", "sorting", "marks", "scores", "values", "salary", "salaries",
     ],
     "optimization": [
         "maximize", "minimize", "optimal", "best combination", "select items",
@@ -24,7 +25,7 @@ DOMAIN_KEYWORDS = {
         "navigate", "cities", "locations", "network", "roads", "connections",
         "distance between", "all pairs", "every pair", "cost between",
         "floyd", "warshall", "dijkstra", "shortest path", "adjacency", "single source",
-        "pathfinding", "graph traversal", "map", "gps", "fastest way",
+        "pathfinding", "graph traversal", "map", "gps", "fastest way", "fastest route",
     ],
     "mst": [
         "spanning tree", "minimum spanning", "connect all nodes", "least cost network",
@@ -52,12 +53,14 @@ def _normalize(text):
 def detect_domain(text):
     text = _normalize(text)
     
-    # Priority Overrides
-    if any(k in text for k in ["prims", "kruskal", "mst", "spanning tree", "connect all"]):
+    # Priority Overrides (Strict matches)
+    if any(k in text for k in ["prims", "kruskal", "mst", "spanning tree"]):
         return "mst", ["mst-override"], None
     if any(k in text for k in ["multistage", "layered graph", "stages"]):
         return "staged", ["staged-override"], None
-    if any(k in text for k in ["knapsack", "weights", "values", "capacity"]):
+    
+    # Require multiple keywords for knapsack override to avoid false positives with "values"
+    if "knapsack" in text or (any(k in text for k in ["weights", "capacity"]) and "values" in text):
         if any(k in text for k in ["fractional", "decimal", "break", "divide"]):
              return "optimization", ["knapsack-greedy"], None
         return "optimization", ["knapsack-dp"], None
