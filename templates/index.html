@@ -24,12 +24,22 @@
 
         <!-- Image Upload -->
         <div class="image-upload-area" id="imageUploadArea">
-            <div class="upload-dropzone" id="dropzone">
-                <span class="upload-icon">📷</span>
-                <span class="upload-text">Drag & drop an image here, or <label for="imageInput" class="upload-link">browse</label></span>
-                <span class="upload-hint">Extract problem text from images of questions, graphs, or tables</span>
-                <input type="file" id="imageInput" accept="image/*" hidden>
-            </div>
+                <div class="dual-upload-container">
+                    <div class="upload-zone" id="textDropzone">
+                        <div class="upload-icon">📝</div>
+                        <div class="upload-title">Step 1: Problem Text</div>
+                        <div class="upload-hint">Extract any algorithmic problem context</div>
+                        <input type="file" id="textImageInput" accept="image/*" hidden>
+                        <button class="upload-mini-btn" onclick="document.getElementById('textImageInput').click()">Browse Text</button>
+                    </div>
+                    <div class="upload-zone" id="graphDropzone">
+                        <div class="upload-icon">🕸️</div>
+                        <div class="upload-title">Step 2: Problem Data</div>
+                        <div class="upload-hint">Extract raw test data (Arrays, Graphs, Tables)</div>
+                        <input type="file" id="graphImageInput" accept="image/*" hidden>
+                        <button class="upload-mini-btn" onclick="document.getElementById('graphImageInput').click()">Browse Data</button>
+                    </div>
+                </div>
             <div class="ocr-status" id="ocrStatus" style="display:none">
                 <div class="spinner-small"></div>
                 <span>Extracting text from image...</span>
@@ -104,38 +114,108 @@ document.getElementById('problemStatement').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); analyzeStatement(); }
 });
 
-// ═══ IMAGE UPLOAD + OCR ═══
-const dropzone = document.getElementById('dropzone');
-const imageInput = document.getElementById('imageInput');
 
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
-dropzone.addEventListener('drop', e => {
-    e.preventDefault(); dropzone.classList.remove('drag-over');
-    if (e.dataTransfer.files.length) processImage(e.dataTransfer.files[0]);
+// ═══ GLOBAL INITIALIZATION ═══
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('problemStatement').focus();
 });
-imageInput.addEventListener('change', e => { if (e.target.files.length) processImage(e.target.files[0]); });
 
-async function processImage(file) {
+document.getElementById('problemStatement').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); analyzeStatement(); }
+});
+
+async function preprocessImage(file) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                for (let i = 0; i < data.length; i += 4) {
+                    const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+                    const val = avg > 165 ? 255 : 0; // High contrast
+                    data[i] = data[i+1] = data[i+2] = val;
+                }
+                ctx.putImageData(imageData, 0, 0);
+                resolve(canvas.toDataURL());
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// ═══ DUAL-ZONE IMAGE PROCESSING ═══
+function setupDropzone(zoneId, inputId, isGraph) {
+    const zone = document.getElementById(zoneId);
+    const input = document.getElementById(inputId);
+    if (!zone || !input) return;
+    
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault(); zone.classList.remove('drag-over');
+        if (e.dataTransfer.files.length) processImage(e.dataTransfer.files[0], isGraph);
+    });
+    input.addEventListener('change', e => { if (e.target.files.length) processImage(e.target.files[0], isGraph); });
+}
+
+setupDropzone('textDropzone', 'textImageInput', false);
+setupDropzone('graphDropzone', 'graphImageInput', true);
+
+async function processImage(file, isGraph) {
     if (!file.type.startsWith('image/')) { showError('Please upload an image file.'); return; }
     const ocrStatus = document.getElementById('ocrStatus');
     const ocrResult = document.getElementById('ocrResult');
+    const statusText = ocrStatus.querySelector('span');
     ocrStatus.style.display = 'flex'; ocrResult.style.display = 'none';
 
     try {
-        const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+        const processedImage = await preprocessImage(file);
+        const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
             logger: m => {
                 if (m.status === 'recognizing text') {
-                    ocrStatus.querySelector('span').textContent = `Extracting text... ${Math.round(m.progress * 100)}%`;
+                    statusText.textContent = isGraph ? `Inferring Graph... ${Math.round(m.progress * 100)}%` : `Reading Question... ${Math.round(m.progress * 100)}%`;
                 }
             }
         });
+        
         ocrStatus.style.display = 'none';
-        document.getElementById('ocrText').value = text.trim();
         ocrResult.style.display = 'block';
-    } catch(err) {
+        
+        let cleaned = text.replace(/[^\w\s\.\,\:\-\(\)\[\]\=]/g, ' ').replace(/\s+/g, ' '); 
+        let finalOutput = cleaned;
+
+        if (isGraph) {
+            const edgeRegex = /([A-Z])\s*[\-\:\s]*\s*([A-Z])\s*[\(\:\s]*\s*(\d+)/gi;
+            let inferredEdges = [];
+            let m;
+            while ((m = edgeRegex.exec(cleaned)) !== null) {
+                inferredEdges.push(`(${m[1].toUpperCase()}, ${m[2].toUpperCase()}, ${m[3]})`);
+            }
+            finalOutput = `--- 🕸️ INFERRED GRAPH DATA ---\n`;
+            if (inferredEdges.length > 0) {
+                finalOutput += `Detected Edges: ${[...new Set(inferredEdges)].join(', ')}\n\n[Graph Data]:\n${inferredEdges.join('\n')}`;
+            } else {
+                finalOutput += `No clear edges found. Tip: Type 'A-B: 5' manually below.\n\nRaw Text: ${cleaned.substring(0, 200)}...`;
+            }
+        } else {
+            finalOutput = `--- 📝 INFERRED PROBLEM TEXT ---\n${cleaned}`;
+        }
+        
+        const currentVal = document.getElementById('ocrText').value;
+        document.getElementById('ocrText').value = (currentVal ? currentVal + '\n\n' : '') + finalOutput.trim();
+        statusText.textContent = "Extracting text from image...";
+    } catch (err) {
+        console.error(err);
         ocrStatus.style.display = 'none';
-        showError('OCR failed: ' + err.message);
+        showError("OCR extraction failed.");
     }
 }
 
@@ -151,32 +231,47 @@ function useOcrText() {
 let samplesLoaded = false;
 async function toggleSamples() {
     const panel = document.getElementById('samplePanel');
-    if (panel.style.display === 'none') {
+    const isHidden = panel.style.display === 'none';
+    
+    if (isHidden) {
+        panel.style.display = 'block';
         if (!samplesLoaded) {
+            panel.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">⏳ Fetching Test Suite...</div>';
             try {
-                const r = await fetch('/sample-questions');
-                const data = await r.json();
+                const response = await fetch('/sample-questions');
+                const data = await response.json();
+                
                 let html = '';
-                for (const [category, questions] of Object.entries(data)) {
-                    html += `<div class="sample-category">
-                        <div class="sample-cat-title">${category}</div>
-                        ${questions.map(q => `<div class="sample-q" onclick="useSampleQ(this)">${q}</div>`).join('')}
-                    </div>`;
-                }
+                Object.entries(data).forEach(([category, questions]) => {
+                    html += `
+                        <div class="sample-category">
+                            <div class="sample-cat-title">${category}</div>
+                            <div class="sample-list">
+                                ${questions.map(q => `<div class="sample-q" onclick="useSampleQ(this)">${q}</div>`).join('')}
+                            </div>
+                        </div>`;
+                });
+                
                 panel.innerHTML = html;
                 samplesLoaded = true;
-            } catch(e) { panel.innerHTML = '<p style="color:var(--accent-danger)">Failed to load samples</p>'; }
+            } catch (err) {
+                console.error("Sample Load Error:", err);
+                panel.innerHTML = '<div style="padding:20px;text-align:center;color:var(--accent-danger)">❌ Failed to load test suite. Please check server connection.</div>';
+            }
         }
-        panel.style.display = 'block';
     } else {
         panel.style.display = 'none';
     }
 }
 
 function useSampleQ(el) {
-    document.getElementById('problemStatement').value = el.textContent;
+    const text = el.textContent.trim();
+    document.getElementById('problemStatement').value = text;
     document.getElementById('problemStatement').focus();
+    // Smoothly close panel after selection
     document.getElementById('samplePanel').style.display = 'none';
+    // Trigger auto-scroll to input
+    document.getElementById('problemStatement').scrollIntoView({behavior:'smooth', block:'center'});
 }
 
 // ═══ MAIN ANALYSIS ═══
@@ -223,11 +318,18 @@ function renderResults(data) {
 function renderSummary(a) {
     const domainLabel = a.domain === 'ordering' ? 'Sorting / Ordering' :
                         a.domain === 'optimization' ? 'Optimization (Knapsack)' :
-                        a.domain === 'pathfinding' ? 'Shortest Path' : a.domain;
+                        a.domain === 'pathfinding' ? 'Shortest Path' :
+                        a.domain === 'mst' ? 'Minimum Spanning Tree' :
+                        a.domain === 'staged' ? 'Multistage Graph' : a.domain;
+    const inputSize = a.input_size ? a.input_size.toLocaleString() : 'N/A';
     document.getElementById('analysisSummary').innerHTML = `
         <div class="summary-item">
             <div class="summary-label">Detected Domain</div>
             <div class="summary-value type-value">${domainLabel}</div>
+        </div>
+        <div class="summary-item">
+            <div class="summary-label">Algorithm Selection Logic</div>
+            <div class="summary-value type-value" style="font-size: 14px; color: var(--accent-secondary); line-height: 1.4;">${a.selection_justification || 'Logic calculated based on problem constraints.'}</div>
         </div>
         <div class="summary-item">
             <div class="summary-label">Best Paradigm</div>
@@ -236,14 +338,8 @@ function renderSummary(a) {
         </div>
         <div class="summary-item">
             <div class="summary-label">Input Size (N)</div>
-            <div class="summary-value">${a.input_size.toLocaleString()}</div>
-            <div class="summary-sub">From: "${a.size_source}"</div>
-        </div>
-        <div class="summary-item">
-            <div class="summary-label">Matched Keywords</div>
-            <div class="keywords-list">
-                ${a.matched_keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('')}
-            </div>
+            <div class="summary-value">${inputSize}</div>
+            <div class="summary-sub">From: "${a.size_source || 'AI Inference'}"</div>
         </div>`;
 }
 
@@ -252,33 +348,44 @@ function renderExtracted(ext) {
     if (!ext || (!ext.array && !ext.knapsack && !ext.graph)) {
         card.style.display = 'none'; return;
     }
+    card.style.display = 'block';
     let html = '<div class="glass-card extracted-card"><h3>📥 Extracted Input Data (from your question)</h3><div class="extracted-grid">';
+    
     if (ext.array) {
-        html += `<div class="extracted-item"><span class="extracted-label">Array</span><code>[${ext.array.join(', ')}]</code></div>`;
+        html += `<div class="extracted-item"><span class="extracted-label">Array to Sort</span><code>[${ext.array.join(', ')}]</code></div>`;
     }
+    
     if (ext.knapsack) {
         const ks = ext.knapsack;
         if (ks.weights) html += `<div class="extracted-item"><span class="extracted-label">Weights</span><code>[${ks.weights.join(', ')}]</code></div>`;
         if (ks.values) html += `<div class="extracted-item"><span class="extracted-label">Values</span><code>[${ks.values.join(', ')}]</code></div>`;
-        if (ks.capacity) html += `<div class="extracted-item"><span class="extracted-label">Capacity</span><code>${ks.capacity}</code></div>`;
+        if (ks.capacity) html += `<div class="extracted-item"><span class="extracted-label">Capacity (W)</span><code>${ks.capacity}</code></div>`;
     }
-    if (ext.graph) {
-        const g = ext.graph;
-        if (g.nodes) html += `<div class="extracted-item"><span class="extracted-label">Nodes</span><code>${g.nodes}</code></div>`;
-        if (g.matrix_size) html += `<div class="extracted-item"><span class="extracted-label">Matrix</span><code>${g.matrix_size}</code></div>`;
-        if (g.edges) html += `<div class="extracted-item"><span class="extracted-label">Edges</span><code>${g.edges.length} edges</code></div>`;
+
+    if (ext.graph && ext.graph.matrix) {
+        const m = ext.graph.matrix;
+        const matrixStr = m.map(row => `[${row.map(x => x === Infinity || x === null ? '∞' : x).join(',')}]`).join(', ');
+        html += `<div class="extracted-item"><span class="extracted-label">Adjacency Matrix</span><code>[${matrixStr}]</code></div>`;
+        
+        if (ext.graph.nodes) {
+            const mapping = ext.graph.nodes.map((n, i) => `${n}→${i}`).join(', ');
+            html += `<div class="extracted-item"><span class="extracted-label">Node Mapping</span><code>${mapping}</code></div>`;
+        }
     }
+    
     html += '</div></div>';
-    card.innerHTML = html; card.style.display = 'block';
+    card.innerHTML = html;
 }
 
 function renderBest(best, a) {
+    if (!best || !best.info) return;
     const i = best.info;
+    const inputSize = a.input_size ? a.input_size.toLocaleString() : 'N/A';
     document.getElementById('bestAlgoCard').innerHTML = `
         <div class="best-algo-card">
             <div class="best-badge">⭐ AI Recommendation — Best Algorithm</div>
             <div class="best-algo-name">${best.name}</div>
-            <div class="best-algo-paradigm">${best.paradigm} • N = ${a.input_size.toLocaleString()}</div>
+            <div class="best-algo-paradigm">${best.paradigm} • N = ${inputSize}</div>
             <div class="best-algo-desc">${i.description}</div>
             <div class="best-complexity-grid">
                 <div class="complexity-chip"><span class="label">Best</span><span class="value">${i.time_best}</span></div>
@@ -288,7 +395,7 @@ function renderBest(best, a) {
             </div>
             <div class="best-time-display">
                 <span class="time-label">Benchmark:</span>
-                <span class="time-value">${best.time.toFixed(8)}</span>
+                <span class="time-value">${best.time ? best.time.toFixed(8) : '0.00000000'}</span>
                 <span class="time-unit">seconds</span>
             </div>
         </div>`;
@@ -306,6 +413,7 @@ function renderChart(algos) {
     const pColors = {
         'Brute Force':'rgba(248,113,113,0.8)','Decrease and Conquer':'rgba(167,139,250,0.8)',
         'Divide and Conquer':'rgba(56,189,248,0.8)','Dynamic Programming':'rgba(251,191,36,0.8)',
+        'Greedy Method':'rgba(52,211,153,0.8)'
     };
     chartInstance = new Chart(ctx, {
         type: 'bar',
@@ -348,7 +456,7 @@ function renderTable(algos) {
 }
 
 function pClass(p) {
-    return {'Brute Force':'brute-force','Decrease and Conquer':'decrease-conquer','Divide and Conquer':'divide-conquer','Dynamic Programming':'dynamic-programming'}[p]||'';
+    return {'Brute Force':'brute-force','Decrease and Conquer':'decrease-conquer','Divide and Conquer':'divide-conquer','Dynamic Programming':'dynamic-programming','Greedy Method':'greedy-method'}[p]||'';
 }
 
 function renderCards(algos) {

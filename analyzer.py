@@ -1,6 +1,6 @@
 """
 analyzer.py - NLP Problem Statement Analyzer
-Detects problem domain, paradigm, AND extracts specific inputs from the question.
+Detects problem domain, paradigm, and provides justification.
 """
 import re
 
@@ -16,13 +16,17 @@ DOMAIN_KEYWORDS = {
         "capacity", "budget", "weight limit", "profit", "pack", "fill",
         "choose items", "pick items", "constraint", "limited space",
         "maximum value", "minimum cost", "best subset", "combination",
-        "knapsack", "bag", "container", "load", "weight", "value",
+        "knapsack", "bag", "container", "load", "weight", "value", "decimal", "fractional",
     ],
     "pathfinding": [
         "shortest", "minimum distance", "route", "path between", "travel",
         "navigate", "cities", "locations", "network", "roads", "connections",
         "distance between", "all pairs", "every pair", "cost between",
-        "floyd", "warshall", "dijkstra", "shortest path", "adjacency",
+        "floyd", "warshall", "dijkstra", "shortest path", "adjacency", "single source",
+    ],
+    "mst": [
+        "spanning tree", "minimum spanning", "connect all nodes", "least cost network",
+        "prims", "kruskal", "mst", "minimum cost to connect", "wiring cost", "fiber optic layout",
     ],
     "staged": [
         "stages", "pipeline", "levels", "phases", "sequential",
@@ -50,9 +54,11 @@ def detect_domain(text):
         hits = [k for k in keywords if k in text]
         scores[domain] = len(hits)
         matched[domain] = hits
-    best = max(scores, key=scores.get) if scores else None
-    if not best or scores[best] == 0:
-        return None, [], "Could not detect problem domain. Describe the problem more clearly (e.g., arrange numbers, find shortest path, maximize value with weight limit)."
+    
+    if not any(scores.values()):
+        return None, [], "Could not detect problem domain. Please describe the problem (e.g., arrange numbers, find shortest path, maximize value)."
+        
+    best = max(scores, key=scores.get)
     return best, matched[best], None
 
 
@@ -73,147 +79,178 @@ def extract_input_size(text):
     return None, None
 
 
-def extract_array(text):
-    """Extract an explicit array from the question, e.g. [5, 3, 8, 1] or {5,3,8,1}."""
-    # Match [1, 2, 3] or {1, 2, 3} or (1, 2, 3)
-    m = re.search(r'[\[({]([\d\s,]+)[\])}]', text)
-    if m:
-        nums = re.findall(r'\d+', m.group(1))
-        if len(nums) >= 2:
-            return [int(n) for n in nums]
-    # Match comma-separated: "numbers: 5, 3, 8, 1, 9"
-    m = re.search(r'(?:numbers|elements|array|list|data|values)[:\s]+((?:\d+[\s,]+){2,}\d+)', _normalize(text))
-    if m:
-        nums = re.findall(r'\d+', m.group(1))
-        if len(nums) >= 2:
-            return [int(n) for n in nums]
-    return None
-
-
-def extract_knapsack_data(text):
-    """Extract weights, values, and capacity from knapsack problem descriptions."""
+def conclude_paradigm(domain, input_size, text):
     text_lower = _normalize(text)
-    data = {}
-
-    # Extract weights: weights = [10, 20, 30] or w = [10, 20, 30]
-    w_match = re.search(r'(?:weights?|w)\s*[=:]\s*[\[({]([\d\s,]+)[\])}]', text_lower)
-    if w_match:
-        data['weights'] = [int(n) for n in re.findall(r'\d+', w_match.group(1))]
-
-    # Extract values/profits: values = [60, 100, 120] or v = [60, 100, 120] or profits = [...]
-    v_match = re.search(r'(?:values?|profits?|v|p)\s*[=:]\s*[\[({]([\d\s,]+)[\])}]', text_lower)
-    if v_match:
-        data['values'] = [int(n) for n in re.findall(r'\d+', v_match.group(1))]
-
-    # Extract capacity: capacity = 50 or W = 50 or cap = 50 or weight limit 50
-    c_match = re.search(r'(?:capacity|cap|weight\s*limit|w|max\s*weight)\s*[=:]\s*(\d+)', text_lower)
-    if c_match:
-        data['capacity'] = int(c_match.group(1))
-
-    return data if data else None
-
-
-def extract_graph_data(text):
-    """Extract graph edges or adjacency matrix from the question."""
-    text_lower = _normalize(text)
-    data = {}
-
-    # Extract number of nodes/vertices
-    n_match = re.search(r'(\d+)\s+(?:nodes?|vertices|vertex|cities|locations)', text_lower)
-    if n_match:
-        data['nodes'] = int(n_match.group(1))
-
-    # Extract edges: (1,2,5), (2,3,3) or 1->2:5, 2->3:3
-    edges = re.findall(r'[\(]([\d]+)\s*[,\s]\s*([\d]+)\s*[,\s]\s*([\d]+)[\)]', text)
-    if edges:
-        data['edges'] = [(int(a), int(b), int(w)) for a, b, w in edges]
-
-    # Extract adjacency matrix rows: [0, 5, inf, 10]
-    matrix_rows = re.findall(r'[\[({]([\d\s,infinf]+)[\])}]', text_lower)
-    if len(matrix_rows) >= 2:
-        matrix = []
-        for row in matrix_rows:
-            vals = []
-            for v in re.split(r'[,\s]+', row.strip()):
-                if v in ('inf', 'infinity', '∞', '-'):
-                    vals.append(float('inf'))
-                elif v.isdigit():
-                    vals.append(int(v))
-            if vals:
-                matrix.append(vals)
-        if len(matrix) >= 2 and all(len(r) == len(matrix[0]) for r in matrix):
-            data['matrix'] = matrix
-
-    return data if data else None
-
-
-def conclude_paradigm(domain, input_size):
-    if domain in ("optimization", "pathfinding", "staged"):
-        labels = {"optimization": "optimal selection under constraints",
-                  "pathfinding": "shortest paths", "staged": "staged/layered decisions"}
-        return "Dynamic Programming", f"Problems involving {labels[domain]} require Dynamic Programming for efficient solutions."
+    
     if domain == "ordering":
         for paradigm, (lo, hi) in ORDERING_THRESHOLDS.items():
             if lo <= input_size <= hi:
                 reasons = {
-                    "Brute Force": f"Input size {input_size} is small (<=50), making simple Brute Force approaches efficient enough.",
-                    "Decrease and Conquer": f"Input size {input_size} is moderate (51-200), where Decrease and Conquer provides a good balance.",
-                    "Divide and Conquer": f"Input size {input_size} is large (>200), requiring efficient Divide and Conquer strategies.",
+                    "Brute Force": f"Input size {input_size} is small, allowing simple Brute Force comparisons.",
+                    "Decrease and Conquer": f"Input size {input_size} is moderate; Decrease and Conquer (Insertion) is efficient here.",
+                    "Divide and Conquer": f"Input size {input_size} is large; Divide and Conquer is necessary for log-linear efficiency.",
                 }
                 return paradigm, reasons[paradigm]
         return "Divide and Conquer", "Large input size defaults to Divide and Conquer."
-    return None, "Could not determine paradigm."
+    
+    if domain == "optimization":
+        if "decimal" in text_lower or "fractional" in text_lower:
+            return "Greedy Method", "Problem involves divisible items (decimal/fractional), making the Greedy approach optimal."
+        else:
+            return "Dynamic Programming", "Discrete items (Knapsack 0/1) require Dynamic Programming to ensure global optimality."
+            
+    if domain == "pathfinding":
+        if "all pairs" in text_lower or "every pair" in text_lower or input_size < 50:
+            return "Dynamic Programming", "All-pairs shortest path analysis is best handled by DP (Floyd-Warshall)."
+        else:
+            return "Greedy Method", "Single-source shortest path is efficiently solved using the Greedy Method (Dijkstra)."
+            
+    if domain == "mst":
+        return "Greedy Method", "Minimum Spanning Tree construction is a classic application of the Greedy Method (Prim/Kruskal)."
+        
+    if domain == "staged":
+        return "Dynamic Programming", "Staged/layered decision processes exhibit optimal substructure, requiring Dynamic Programming."
+        
+    return "Dynamic Programming", "Defaulting to Dynamic Programming for complex optimization."
 
+
+def extract_array(text):
+    # Look for [1, 2, 3] or 1, 2, 3
+    match = re.search(r"\[([\d\s,.]+)\]", text)
+    if match:
+        try:
+            return [float(x.strip()) for x in match.group(1).split(",") if x.strip()]
+        except: pass
+    
+    # Try comma separated numbers if no brackets
+    nums = re.findall(r"\b\d+(?:\.\d+)?\b", text)
+    if len(nums) > 3: # Avoid catching lone numbers like 'size 10'
+        return [float(x) for x in nums]
+    return None
+
+def extract_knapsack_data(text):
+    data = {}
+    # Capacity
+    cap_match = re.search(r"(?:capacity|limit|bag|weight limit)\s*(?:is|=|:)?\s*(\d+)", text, re.I)
+    if cap_match: data['capacity'] = int(cap_match.group(1))
+    
+    # Weights/Values usually in pairs or arrays
+    # "weights = [2, 3, 4]"
+    w_match = re.search(r"weights?\s*[=:]\s*\[([\d\s,.]+)\]", text, re.I)
+    if w_match: data['weights'] = [float(x.strip()) for x in w_match.group(1).split(",") if x.strip()]
+    
+    v_match = re.search(r"values?\s*[=:]\s*\[([\d\s,.]+)\]", text, re.I)
+    if v_match: data['values'] = [float(x.strip()) for x in v_match.group(1).split(",") if x.strip()]
+    
+    return data if data else None
+
+def extract_edges(text):
+    # Strip out UI headers and noise
+    clean_text = re.sub(r"-{3,}.*?-{3,}", "", text, flags=re.DOTALL)
+    
+    # Look for patterns like A-B: 5, (A, B, 5), A to B (2)
+    # 1. (A, B, 5) or [A, B, 5] or (1, 2, 5)
+    matches = re.findall(r"[\(\[]\s*([a-zA-Z\d]+)\s*[,: ]\s*([a-zA-Z\d]+)\s*[,: ]\s*(\d+(?:\.\d+)?)\s*[\)\]]", clean_text)
+    edges = []
+    for u, v, w in matches:
+        edges.append((u.upper(), v.upper(), float(w)))
+    
+    # 2. A-B: 5 or A-B=5 or A -> B (5) or A to B 5
+    matches2 = re.findall(r"\b([a-zA-Z\d]+)\s*(?:-|->|to)\s*([a-zA-Z\d]+)\s*(?:[:=]|\s+is\s+|\s*\(?)\s*(\d+(?:\.\d+)?)\)?", clean_text)
+    for u, v, w in matches2:
+        edges.append((u.upper(), v.upper(), float(w)))
+        
+    return edges
+
+def edges_to_matrix(edges):
+    if not edges: return None
+    # Find all unique nodes
+    nodes = set()
+    for u, v, w in edges:
+        nodes.add(u); nodes.add(v)
+    
+    sorted_nodes = sorted(list(nodes))
+    node_map = {node: i for i, node in enumerate(sorted_nodes)}
+    n = len(sorted_nodes)
+    
+    matrix = [[float('inf')] * n for _ in range(n)]
+    for i in range(n): matrix[i][i] = 0
+    
+    for u, v, w in edges:
+        ui, vi = node_map[u], node_map[v]
+        matrix[ui][vi] = w
+        matrix[vi][ui] = w # Assuming undirected for MST/general
+        
+    return {"matrix": matrix, "nodes": sorted_nodes}
+
+def extract_graph_data(text):
+    # 1. Check for existing matrix structure
+    matrix_match = re.search(r"\[\s*(\[[\d\s,.]+\](?:\s*,\s*\[[\d\s,.]+\])*)\s*\]", text)
+    if matrix_match:
+        try:
+            rows = re.findall(r"\[([\d\s,.]+)\]", matrix_match.group(1))
+            matrix = []
+            for r in rows:
+                matrix.append([float(x.strip()) for x in r.split(",") if x.strip()])
+            return {"matrix": matrix}
+        except: pass
+    
+    # 2. Try inferring from edges
+    edges = extract_edges(text)
+    if edges:
+        return edges_to_matrix(edges)
+        
+    return None
 
 def analyze_problem(statement):
     domain, keywords, error = detect_domain(statement)
     if error:
         return {"error": error}
+    
+    extracted_data = {
+        "array": extract_array(statement),
+        "knapsack": extract_knapsack_data(statement),
+        "graph": extract_graph_data(statement)
+    }
 
-    # Extract specific data from the question
-    arr = extract_array(statement)
-    knapsack_data = extract_knapsack_data(statement)
-    graph_data = extract_graph_data(statement)
-
-    # Determine input size: from extracted data first, then from text, then default
-    input_size = None
-    size_source = None
-
-    if arr:
-        input_size = len(arr)
-        size_source = f"extracted array of {len(arr)} elements"
-    elif knapsack_data and 'weights' in knapsack_data:
-        input_size = len(knapsack_data['weights'])
-        size_source = f"extracted {len(knapsack_data['weights'])} items from weights"
-    elif graph_data and 'nodes' in graph_data:
-        input_size = graph_data['nodes']
-        size_source = f"extracted {graph_data['nodes']} nodes"
-    elif graph_data and 'matrix' in graph_data:
-        input_size = len(graph_data['matrix'])
-        size_source = f"extracted {len(graph_data['matrix'])}x{len(graph_data['matrix'])} matrix"
-
+    input_size, size_source = extract_input_size(statement)
     if not input_size:
-        input_size, size_source = extract_input_size(statement)
-    if not input_size:
-        input_size = 100
-        size_source = "default (100)"
-
-    paradigm, reasoning = conclude_paradigm(domain, input_size)
-    if not paradigm:
-        return {"error": reasoning}
-
+        # If we have an array, its length is the size
+        if extracted_data["array"]:
+            input_size = len(extracted_data["array"])
+            size_source = "extracted array length"
+        elif extracted_data["knapsack"] and "weights" in extracted_data["knapsack"]:
+            input_size = len(extracted_data["knapsack"]["weights"])
+            size_source = "extracted knapsack items count"
+        else:
+            # Defaults based on domain if not found
+            defaults = {"ordering": 100, "optimization": 20, "pathfinding": 30, "mst": 25, "staged": 15}
+            input_size = defaults.get(domain, 50)
+            size_source = f"estimated from domain: {domain}"
+        
+    paradigm, reasoning = conclude_paradigm(domain, input_size, statement)
+    
+    # Justification for why these algorithms were chosen
+    is_all_pairs = "all pairs" in statement.lower() or "every pair" in statement.lower()
+    
+    justifications = {
+        "ordering": "This problem involves sorting or arranging data. We apply Brute Force, Decrease & Conquer, and Divide & Conquer to compare efficiency across different input sizes.",
+        "optimization": "This is a resource allocation problem (Knapsack). We compare the Greedy Method (Fractional) vs Dynamic Programming (0/1) based on item divisibility.",
+        "pathfinding": f"This is a network routing problem ({'All-Pairs' if is_all_pairs else 'Single-Source'}). We apply Dijkstra (Greedy) and Floyd-Warshall (DP) to compare their efficiency for this specific graph scale.",
+        "mst": "This problem seeks the minimum cost to connect all nodes. We apply Greedy algorithms (Prim's and Kruskal's) to find the Minimum Spanning Tree.",
+        "staged": "This problem has sequential decision stages. Dynamic Programming is chosen to solve the shortest path through layered nodes."
+    }
+    
     return {
         "original_statement": statement,
         "domain": domain,
         "paradigm": paradigm,
         "paradigm_reasoning": reasoning,
+        "selection_justification": justifications.get(domain, "Analyzed domain characteristics to select relevant algorithmic approaches."),
         "input_size": input_size,
         "size_source": size_source,
         "matched_keywords": keywords,
-        "extracted_data": {
-            "array": arr,
-            "knapsack": knapsack_data,
-            "graph": graph_data,
-        },
+        "is_all_pairs": is_all_pairs,
+        "extracted_data": extracted_data,
         "error": None,
     }

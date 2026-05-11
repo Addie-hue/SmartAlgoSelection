@@ -1,13 +1,15 @@
 """
-app.py - SmartAlgoSelection Backend
-Analyzes problem statements, handles image OCR, benchmarks algorithms.
-Uses extracted data from questions when available.
+app.py — SmartAlgoSelection Backend
+Updated to handle Greedy Method and specific algorithm mappings.
 """
 from flask import Flask, render_template, request, jsonify
-import random, time, warnings
+import random
+import time
+import warnings
 
 import sort as sa
 import dp
+import greedy as gr
 from analyzer import analyze_problem
 from knowledge_base import get_algorithms
 
@@ -15,61 +17,19 @@ warnings.filterwarnings("ignore")
 app = Flask(__name__)
 
 
-# ═══ SAMPLE QUESTIONS ═════════════════════════════════════════════════════
+# ═══ BENCHMARK RUNNERS ═══════════════════════════════════════════════════
 
-SAMPLE_QUESTIONS = {
-    "Sorting (Brute Force)": [
-        "Arrange the numbers [34, 12, 5, 78, 23] from smallest to largest",
-        "Put these 15 student marks in ascending order",
-        "Order the elements [9, 1, 4, 7, 2, 8, 3, 6, 5] from low to high",
-        "I have 25 random values, organize them in increasing sequence",
-    ],
-    "Sorting (Decrease & Conquer)": [
-        "Organize these 120 employee IDs in ascending sequence",
-        "Arrange 75 temperature readings from lowest to highest",
-        "Put 150 exam scores in increasing order for the department",
-        "Order 100 product prices from cheapest to most expensive",
-    ],
-    "Sorting (Divide & Conquer)": [
-        "Arrange 5000 numbers from smallest to largest",
-        "I need to organize 10000 records in ascending order efficiently",
-        "Put 2500 sensor readings in sequence from low to high",
-        "Order 8000 transaction amounts from smallest to largest",
-    ],
-    "Knapsack (DP)": [
-        "Given items with weights = [2, 3, 4, 5] and values = [3, 4, 5, 6], capacity = 8, maximize value",
-        "I have 20 items with different weights and profits, find the best combination within weight limit 150",
-        "Pack a bag with capacity = 50 using items: weights = [10, 20, 30] values = [60, 100, 120]",
-        "Select the best subset of 30 products to maximize profit without exceeding budget constraint of 500",
-    ],
-    "Shortest Path (DP)": [
-        "Find minimum travel distance between every pair of 40 cities connected by roads",
-        "Given a network of 25 locations, find the shortest route between all pairs",
-        "Calculate minimum cost paths between all 15 nodes in this weighted network",
-        "Find shortest distance between every pair of 50 vertices in a weighted graph",
-    ],
-    "Multistage Graph (DP)": [
-        "Process 60 tasks through 4 pipeline stages to minimize total cost",
-        "Find optimal path through a 5-stage network with 30 nodes",
-        "Route data through a 3-level layered network of 45 nodes minimizing latency",
-        "Allocate resources across 4 sequential phases with 20 decision points",
-    ],
-}
-
-
-# ═══ BENCHMARK RUNNERS ════════════════════════════════════════════════════
-
-def benchmark_sorting(size, extracted_array=None):
-    if extracted_array:
-        arr = extracted_array
+def benchmark_sorting(size, data=None):
+    if data and data.get('array'):
+        arr = data['array']
         size = len(arr)
+        preview_desc = "User-provided array"
     else:
         arr = [random.randint(1, 10000) for _ in range(size)]
-
-    preview_n = min(size, 20)
+        preview_desc = f"Random integer array of size {size}"
+        
+    preview_n = min(size, 15)
     preview = f"[{', '.join(str(x) for x in arr[:preview_n])}{'...' if size > preview_n else ''}]  ({size} elements)"
-    using = "User-provided array" if extracted_array else "Randomly generated array"
-
     times = {
         "Bubble Sort":     sa.bubble_sort(arr),
         "Selection Sort":  sa.selection_sort(arr),
@@ -77,50 +37,130 @@ def benchmark_sorting(size, extracted_array=None):
         "Merge Sort":      sa.merge_sort(arr),
         "Quick Sort":      sa.quick_sort(arr),
     }
-    return {"times": times, "preview": preview, "data_desc": f"{using} of size {size}"}
+    return {"times": times, "preview": preview, "data_desc": preview_desc}
 
 
-def benchmark_dp(size, knapsack_data=None, graph_data=None):
-    results = {}
-
-    # Knapsack
-    if knapsack_data and 'weights' in knapsack_data and 'values' in knapsack_data:
-        weights = knapsack_data['weights']
-        values = knapsack_data['values']
-        capacity = knapsack_data.get('capacity', sum(weights) // 2)
-        cap_n = len(weights)
-        ks_desc = f"User-provided: {cap_n} items, capacity={capacity}"
+def benchmark_knapsack(size, data=None):
+    ks = data.get('knapsack') if data else None
+    if ks and ks.get('weights') and ks.get('values'):
+        wt = ks['weights']
+        val = ks['values']
+        W = ks.get('capacity', int(sum(wt) * 0.6))
+        size = len(wt)
+        preview_desc = "User-provided knapsack items"
     else:
-        cap_n = min(size, 500)
-        weights = [random.randint(1, 50) for _ in range(cap_n)]
-        values = [random.randint(10, 100) for _ in range(cap_n)]
-        capacity = cap_n * 10
-        ks_desc = f"Random: {cap_n} items, capacity={capacity}"
-    results["Knapsack 0/1 (DP)"] = dp.knapsack_01(capacity, weights, values)
+        wt = [random.randint(1, 50) for _ in range(size)]
+        val = [random.randint(10, 100) for _ in range(size)]
+        W = size * 10
+        preview_desc = f"Knapsack problem with {size} random items"
+    
+    # Convert weights/capacity to int for 0/1 DP (required for table indexing)
+    wt_int = [int(w) for w in wt]
+    W_int = int(W)
+    
+    times = {
+        "Fractional Knapsack (Decimal)": gr.fractional_knapsack(W, wt, val),
+        "Knapsack 0/1": dp.knapsack_01(W_int, wt_int, val)
+    }
+    preview = f"Weights: {wt[:5]}..., Values: {val[:5]}..., Capacity: {W}"
+    return {"times": times, "preview": preview, "data_desc": preview_desc}
 
-    # Floyd-Warshall
-    if graph_data and 'matrix' in graph_data:
-        graph = graph_data['matrix']
-        v = len(graph)
-        fw_desc = f"User-provided {v}x{v} matrix"
+
+def benchmark_shortest_path(size, is_all_pairs=False, data=None):
+    gr_data = data.get('graph') if data else None
+    if gr_data and gr_data.get('matrix'):
+        graph = gr_data['matrix']
+        V = len(graph)
+        preview_desc = "User-provided adjacency matrix"
     else:
-        v = min(size, 80)
-        graph = [[random.randint(1, 100) if i != j else 0 for j in range(v)] for i in range(v)]
-        fw_desc = f"Random {v}x{v} matrix"
-    results["Floyd-Warshall"] = dp.floyd_warshall(graph)
-
-    # Multistage Graph
-    if graph_data and 'matrix' in graph_data:
-        ms_graph = graph_data['matrix']
-        ms = len(ms_graph)
+        V = min(size, 100)
+        graph = [[random.randint(1, 100) if i != j else 0 for j in range(V)] for i in range(V)]
+        preview_desc = f"Weighted graph with {V} random vertices"
+    
+    if is_all_pairs:
+        start = time.perf_counter()
+        for i in range(V):
+            gr.dijkstra_algo(graph, i)
+        dijkstra_time = time.perf_counter() - start
     else:
-        ms = min(size, 80)
-        ms_graph = [[random.randint(1, 100) if i != j else float('inf') for j in range(ms)] for i in range(ms)]
-    results["Multistage Graph (DP)"] = dp.multistage_graph(ms_graph, 4, ms)
+        dijkstra_time = gr.dijkstra_algo(graph, 0)
 
-    preview = f"Knapsack: {ks_desc} | Floyd: {fw_desc} | Multistage: {ms} nodes"
-    return {"times": results, "preview": preview, "data_desc": f"DP problems benchmarked with size ~{size}"}
+    times = {
+        "Dijkstra's Algorithm": dijkstra_time,
+        "Floyd Warshall": dp.floyd_warshall(graph)
+    }
+    preview = f"Adjacency Matrix ({V}x{V}) for {'All-Pairs' if is_all_pairs else 'Single-Source'} shortest path"
+    return {"times": times, "preview": preview, "data_desc": preview_desc}
 
+
+def benchmark_mst(size, data=None):
+    gr_data = data.get('graph') if data else None
+    if gr_data and gr_data.get('matrix'):
+        graph = gr_data['matrix']
+        V = len(graph)
+        preview_desc = "User-provided adjacency matrix"
+    else:
+        V = min(size, 100)
+        graph = [[random.randint(1, 100) if i != j else 0 for j in range(V)] for i in range(V)]
+        preview_desc = f"Graph with {V} random vertices"
+    
+    times = {
+        "Prim's Algorithm": gr.prims_algo(graph),
+        "Kruskal's Algorithm": gr.kruskals_algo(graph)
+    }
+    preview = f"Adjacency Matrix ({V}x{V}) for Minimum Spanning Tree"
+    return {"times": times, "preview": preview, "data_desc": preview_desc}
+
+
+def benchmark_staged(size, data=None):
+    gr_data = data.get('graph') if data else None
+    if gr_data and gr_data.get('matrix'):
+        graph = gr_data['matrix']
+        V = len(graph)
+        preview_desc = "User-provided layered graph"
+    else:
+        V = min(size, 80)
+        graph = [[random.randint(1, 100) if i != j else float('inf') for j in range(V)] for i in range(V)]
+        preview_desc = f"Layered graph with {V} random nodes"
+    
+    times = {
+        "Multistage Graph": dp.multistage_graph(graph, 4, V)
+    }
+    preview = f"Multistage decision layers with {V} total nodes"
+    return {"times": times, "preview": preview, "data_desc": preview_desc}
+
+
+# ═══ SAMPLE QUESTIONS ═════════════════════════════════════════════════════
+
+SAMPLE_QUESTIONS = {
+    "BRUTE FORCE (Sorting)": [
+        "OVERALL: Compare all sorting algorithms on a list of 25 numbers",
+        "BUBBLE SORT: Arrange the numbers [34, 12, 5, 78, 23, 45, 11] in increasing order",
+        "SELECTION SORT: Put these 15 student marks [85, 92, 70, 65, 88, 95...] in ascending order"
+    ],
+    "DECREASE AND CONQUER": [
+        "INSERTION SORT: Order 100 employee records from lowest to highest salary"
+    ],
+    "DIVIDE AND CONQUER": [
+        "OVERALL: Benchmark large-scale sorting on 5000 random values",
+        "MERGE SORT: Organize 2000 sensor readings efficiently",
+        "QUICK SORT: Arrange a list of 1500 coordinates by their X-value"
+    ],
+    "GREEDY METHOD (Optimization & Paths)": [
+        "OVERALL (Shortest Path): Compare Single-Source pathfinding algorithms for 50 nodes",
+        "OVERALL (MST): Compare Prim's vs Kruskal's for a 30-node computer network",
+        "KNAPSACK (DECIMAL): Optimize a bag with capacity 50 using fractional selection",
+        "PRIMS ALGO: Find the minimum cost wiring for a new office layout with 15 nodes",
+        "KRUSKAL ALGO: Connect 20 cities into a single network with minimum total distance",
+        "DIJKSTRA'S: Find the fastest single-source route through 40 intersections"
+    ],
+    "DYNAMIC PROGRAMMING": [
+        "OVERALL: Compare DP vs Greedy for optimization problems",
+        "KNAPSACK 0/1: Best subset of 20 items (cannot be broken). Weights=[2,5,10...], Values=[3,6,12...], Cap=50",
+        "FLOYD WARSHALL: Calculate all-pairs shortest paths for every city in a 20-node network",
+        "MULTISTAGE GRAPH: Find the shortest path through 5 stages of a 40-node pipeline network"
+    ]
+}
 
 # ═══ ROUTES ═══════════════════════════════════════════════════════════════
 
@@ -128,11 +168,9 @@ def benchmark_dp(size, knapsack_data=None, graph_data=None):
 def home():
     return render_template("index.html")
 
-
 @app.route("/sample-questions")
 def sample_questions():
     return jsonify(SAMPLE_QUESTIONS)
-
 
 
 @app.route("/analyze", methods=["POST"])
@@ -147,69 +185,83 @@ def analyze():
         return jsonify({"error": analysis["error"]}), 400
 
     domain = analysis["domain"]
-    paradigm = analysis["paradigm"]
     input_size = analysis["input_size"]
-    extracted = analysis.get("extracted_data", {})
 
-    algos = get_algorithms(domain)
-    if not algos:
-        return jsonify({"error": f"No algorithms found for domain: {domain}"}), 400
-
-    # Benchmark using extracted data when available
+    # Dispatch to relevant benchmark group
+    ex_data = analysis.get("extracted_data")
     if domain == "ordering":
-        bench = benchmark_sorting(input_size, extracted_array=extracted.get("array"))
+        bench = benchmark_sorting(input_size, ex_data)
+    elif domain == "optimization":
+        bench = benchmark_knapsack(input_size, ex_data)
+    elif domain == "pathfinding":
+        bench = benchmark_shortest_path(input_size, analysis.get("is_all_pairs", False), ex_data)
+    elif domain == "mst":
+        bench = benchmark_mst(input_size, ex_data)
+    elif domain == "staged":
+        bench = benchmark_staged(input_size, ex_data)
     else:
-        bench = benchmark_dp(input_size, knapsack_data=extracted.get("knapsack"), graph_data=extracted.get("graph"))
+        return jsonify({"error": "No benchmark available for this domain."}), 400
 
+    algos_data = get_algorithms(domain)
     times = bench["times"]
+    
+    # Identify the best (fastest) algorithm in the group
     best_name = min(times, key=times.get)
     best_time = times[best_name]
 
+    # Build algorithm details for display
     algo_list = []
-    for name, info in algos.items():
-        is_best = (name == best_name)
+    for name, info in algos_data.items():
         t = times.get(name)
+        if t is None: continue
+        
+        is_best = (name == best_name)
         speedup = round(t / best_time, 2) if t and best_time and not is_best and best_time > 0 else None
+        
         algo_list.append({
-            "name": name, "paradigm": info["paradigm"],
-            "time_best": info["time_best"], "time_avg": info["time_avg"],
-            "time_worst": info["time_worst"], "space": info["space"],
-            "description": info["description"], "pros": info["pros"],
-            "cons": info["cons"], "best_when": info["best_when"],
-            "actual_time": round(t, 8) if t else None,
-            "is_best": is_best, "speedup_vs_best": speedup,
+            "name": name,
+            "paradigm": info["paradigm"],
+            "time_best": info["time_best"],
+            "time_avg": info["time_avg"],
+            "time_worst": info["time_worst"],
+            "space": info["space"],
+            "description": info["description"],
+            "pros": info["pros"],
+            "cons": info["cons"],
+            "best_when": info["best_when"],
+            "actual_time": round(t, 8),
+            "is_best": is_best,
+            "speedup_vs_best": speedup,
         })
-    algo_list.sort(key=lambda x: (not x["is_best"], x["actual_time"] or float("inf")))
 
-    best_info = algos[best_name]
+    # Sort so best is at top
+    algo_list.sort(key=lambda x: (not x["is_best"], x["actual_time"]))
 
-    # Build extracted data summary for frontend
-    extracted_summary = {}
-    if extracted.get("array"):
-        extracted_summary["array"] = extracted["array"]
-    if extracted.get("knapsack"):
-        extracted_summary["knapsack"] = extracted["knapsack"]
-    if extracted.get("graph"):
-        g = extracted["graph"]
-        extracted_summary["graph"] = {k: v for k, v in g.items() if k != "matrix"}
-        if "matrix" in g:
-            extracted_summary["graph"]["matrix_size"] = f"{len(g['matrix'])}x{len(g['matrix'])}"
-
+    best_info = algos_data[best_name]
+    
     return jsonify({
         "analysis": {
             "original_statement": analysis["original_statement"],
-            "domain": domain, "paradigm": paradigm,
+            "domain": domain,
+            "paradigm": analysis["paradigm"],
             "paradigm_reasoning": analysis["paradigm_reasoning"],
-            "input_size": input_size, "size_source": analysis["size_source"],
+            "selection_justification": analysis["selection_justification"], # Justification for choosing these algos
+            "input_size": input_size,
+            "size_source": analysis["size_source"],
             "matched_keywords": analysis["matched_keywords"],
-            "extracted_data": extracted_summary,
+            "extracted_data": ex_data
         },
         "best_algorithm": {
-            "name": best_name, "time": round(best_time, 8),
-            "paradigm": best_info["paradigm"], "info": best_info,
+            "name": best_name,
+            "time": round(best_time, 8),
+            "paradigm": best_info["paradigm"],
+            "info": best_info,
         },
         "all_algorithms": algo_list,
-        "benchmark": {"preview": bench["preview"], "data_desc": bench["data_desc"]},
+        "benchmark": {
+            "preview": bench["preview"],
+            "data_desc": bench["data_desc"],
+        },
     })
 
 
