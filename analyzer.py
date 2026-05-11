@@ -17,12 +17,14 @@ DOMAIN_KEYWORDS = {
         "choose items", "pick items", "constraint", "limited space",
         "maximum value", "minimum cost", "best subset", "combination",
         "knapsack", "bag", "container", "load", "weight", "value", "decimal", "fractional",
+        "optimization", "optimization problem", "greedy", "dynamic programming", "dp",
     ],
     "pathfinding": [
         "shortest", "minimum distance", "route", "path between", "travel",
         "navigate", "cities", "locations", "network", "roads", "connections",
         "distance between", "all pairs", "every pair", "cost between",
         "floyd", "warshall", "dijkstra", "shortest path", "adjacency", "single source",
+        "pathfinding", "graph traversal",
     ],
     "mst": [
         "spanning tree", "minimum spanning", "connect all nodes", "least cost network",
@@ -48,6 +50,21 @@ def _normalize(text):
 
 def detect_domain(text):
     text = _normalize(text)
+    
+    # Priority 0: Explicit Architect Data
+    if "graph connections:" in text or "(source, destination, weight)" in text:
+        if any(k in text for k in ["mst", "spanning", "connect", "kruskal", "prim", "roads", "cities"]):
+            return "mst", ["graph", "mst"], None
+        if any(k in text for k in ["staged", "multistage"]):
+            return "staged", ["graph", "multistage"], None
+        return "pathfinding", ["graph", "pathfinding"], None
+        
+    # Priority 1: Overrides
+    if any(k in text for k in ["prims", "kruskal", "mst", "spanning tree", "connect all"]):
+        return "mst", ["mst-override"], None
+    if any(k in text for k in ["multistage", "layered graph", "stages"]):
+        return "staged", ["staged-override"], None
+
     scores = {}
     matched = {}
     for domain, keywords in DOMAIN_KEYWORDS.items():
@@ -56,7 +73,7 @@ def detect_domain(text):
         matched[domain] = hits
     
     if not any(scores.values()):
-        return None, [], "Could not detect problem domain. Please describe the problem (e.g., arrange numbers, find shortest path, maximize value)."
+        return None, [], "Please describe the problem (e.g., sort numbers, find MST, knapsack)."
         
     best = max(scores, key=scores.get)
     return best, matched[best], None
@@ -64,6 +81,7 @@ def detect_domain(text):
 
 def extract_input_size(text):
     text = _normalize(text)
+    # Improved size extraction
     patterns = [
         r"n\s*[=:]\s*(\d+)",
         r"(\d+)\s+(?:elements?|numbers?|integers?|items?|values?|nodes?|vertices|cities|locations|rooms|scores|students|data)",
@@ -94,24 +112,24 @@ def conclude_paradigm(domain, input_size, text):
         return "Divide and Conquer", "Large input size defaults to Divide and Conquer."
     
     if domain == "optimization":
-        if "decimal" in text_lower or "fractional" in text_lower:
-            return "Greedy Method", "Problem involves divisible items (decimal/fractional), making the Greedy approach optimal."
+        if "decimal" in text_lower or "fractional" in text_lower or "greedy" in text_lower:
+            return "Greedy Method", "Problem involves fractional selection or greedy optimization heuristics."
         else:
-            return "Dynamic Programming", "Discrete items (Knapsack 0/1) require Dynamic Programming to ensure global optimality."
+            return "Dynamic Programming", "Discrete decisions (Knapsack 0/1) require Dynamic Programming for global optimality."
             
     if domain == "pathfinding":
-        if "all pairs" in text_lower or "every pair" in text_lower or input_size < 50:
-            return "Dynamic Programming", "All-pairs shortest path analysis is best handled by DP (Floyd-Warshall)."
+        if any(k in text_lower for k in ["floyd", "warshall", "all pairs", "every pair"]):
+            return "Dynamic Programming", "All-pairs shortest path requirement identified. Floyd-Warshall (DP) is the standard solution."
         else:
-            return "Greedy Method", "Single-source shortest path is efficiently solved using the Greedy Method (Dijkstra)."
+            return "Greedy Method", "Single-source shortest path identified. Dijkstra (Greedy) is optimal for this scenario."
             
     if domain == "mst":
-        return "Greedy Method", "Minimum Spanning Tree construction is a classic application of the Greedy Method (Prim/Kruskal)."
+        return "Greedy Method", "Minimum Spanning Tree construction identified. Prim and Kruskal (Greedy) are the primary solutions."
         
     if domain == "staged":
-        return "Dynamic Programming", "Staged/layered decision processes exhibit optimal substructure, requiring Dynamic Programming."
+        return "Dynamic Programming", "Multistage graph detected. This problem exhibits optimal substructure solved via DP."
         
-    return "Dynamic Programming", "Defaulting to Dynamic Programming for complex optimization."
+    return "Dynamic Programming", "Complex constraints detected; applying Dynamic Programming."
 
 
 def extract_array(text):
@@ -148,18 +166,20 @@ def extract_edges(text):
     # Strip out UI headers and noise
     clean_text = re.sub(r"-{3,}.*?-{3,}", "", text, flags=re.DOTALL)
     
-    # Look for patterns like A-B: 5, (A, B, 5), A to B (2)
-    # 1. (A, B, 5) or [A, B, 5] or (1, 2, 5)
+    # Standard Architect Format: (A, B, 5)
     matches = re.findall(r"[\(\[]\s*([a-zA-Z\d]+)\s*[,: ]\s*([a-zA-Z\d]+)\s*[,: ]\s*(\d+(?:\.\d+)?)\s*[\)\]]", clean_text)
-    edges = []
-    for u, v, w in matches:
-        edges.append((u.upper(), v.upper(), float(w)))
     
-    # 2. A-B: 5 or A-B=5 or A -> B (5) or A to B 5
+    # Fallback Format: A-B: 5 or A->B=5
     matches2 = re.findall(r"\b([a-zA-Z\d]+)\s*(?:-|->|to)\s*([a-zA-Z\d]+)\s*(?:[:=]|\s+is\s+|\s*\(?)\s*(\d+(?:\.\d+)?)\)?", clean_text)
-    for u, v, w in matches2:
-        edges.append((u.upper(), v.upper(), float(w)))
-        
+    
+    edges = []
+    seen = set()
+    for u, v, w in (matches + matches2):
+        pair = tuple(sorted([u.upper(), v.upper()]))
+        if (u.upper(), v.upper(), float(w)) not in seen:
+            edges.append((u.upper(), v.upper(), float(w)))
+            seen.add((u.upper(), v.upper(), float(w)))
+            
     return edges
 
 def edges_to_matrix(edges):
@@ -231,7 +251,8 @@ def analyze_problem(statement):
     paradigm, reasoning = conclude_paradigm(domain, input_size, statement)
     
     # Justification for why these algorithms were chosen
-    is_all_pairs = "all pairs" in statement.lower() or "every pair" in statement.lower()
+    text_lower = statement.lower()
+    is_all_pairs = any(k in text_lower for k in ["all pairs", "every pair", "floyd", "warshall", "transitive closure", "reachability"])
     
     justifications = {
         "ordering": "This problem involves sorting or arranging data. We apply Brute Force, Decrease & Conquer, and Divide & Conquer to compare efficiency across different input sizes.",
@@ -246,7 +267,7 @@ def analyze_problem(statement):
         "domain": domain,
         "paradigm": paradigm,
         "paradigm_reasoning": reasoning,
-        "selection_justification": justifications.get(domain, "Analyzed domain characteristics to select relevant algorithmic approaches."),
+        "selection_justification": justifications.get(domain, "AI analyzed the problem constraints and selected the best algorithm group."),
         "input_size": input_size,
         "size_source": size_source,
         "matched_keywords": keywords,

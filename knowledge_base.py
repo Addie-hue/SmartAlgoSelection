@@ -108,30 +108,38 @@ DP_ALGORITHMS = {
         "cons": ["High memory usage (2D table)", "Pseudo-polynomial time"],
         "best_when": ["Discrete items", "Small weights/capacity"]
     },
-    "Floyd Warshall": {
+    "Floyd-Warshall": {
         "paradigm": "Dynamic Programming",
         "time_best": "O(V³)", "time_avg": "O(V³)", "time_worst": "O(V³)",
         "space": "O(V²)",
-        "description": "Finds shortest paths between ALL pairs of vertices in a weighted graph.",
-        "pros": ["Computes all-pairs shortest paths", "Handles negative weights (no negative cycles)"],
-        "cons": ["O(V³) complexity is slow for large V", "O(V²) space for distance matrix"],
-        "best_when": ["All-pairs shortest path", "Dense graphs", "Negative weights exist"]
+        "description": "Finds all-pairs shortest paths in a weighted graph.",
+        "pros": ["Handles all-pairs efficiently", "Works with negative weights"],
+        "cons": ["O(V³) is slow for very large graphs", "High memory usage"],
+        "best_when": ["All-pairs shortest path", "Dense graphs"]
+    },
+    "Warshall's Algorithm": {
+        "paradigm": "Dynamic Programming",
+        "time_best": "O(V³)", "time_avg": "O(V³)", "time_worst": "O(V³)",
+        "space": "O(V²)",
+        "description": "Computes the Transitive Closure of a graph (reachability matrix).",
+        "pros": ["Simple and elegant logic", "Ideal for reachability analysis"],
+        "cons": ["O(V³) time complexity", "Requires bit-matrix representation"],
+        "best_when": ["Transitive closure", "Finding if path exists between nodes"]
     },
     "Multistage Graph": {
         "paradigm": "Dynamic Programming",
         "time_best": "O(V + E)", "time_avg": "O(V + E)", "time_worst": "O(V + E)",
         "space": "O(V)",
-        "description": "Finds shortest path in a graph divided into stages/layers.",
-        "pros": ["Very efficient for layered structures", "Optimal substructure property"],
-        "cons": ["Only works on DAGs with clear stages", "Limited applicability"],
-        "best_when": ["Pipeline processing", "Layered decision networks"]
+        "description": "Shortest path in a graph divided into stages/layers.",
+        "pros": ["Optimized for pipelines", "Exploits layered structure"],
+        "cons": ["Only for staged DAGs"],
+        "best_when": ["Multi-stage pipelines", "Resource allocation"]
     }
 }
 
 def get_algorithms(domain):
     """Returns a dictionary of all relevant algorithms for a given domain."""
     if domain == "ordering":
-        # Return all sorting algorithms across paradigms
         combined = {}
         combined.update(BRUTE_FORCE_SORT)
         combined.update(DECREASE_CONQUER_SORT)
@@ -139,17 +147,16 @@ def get_algorithms(domain):
         return combined
     
     elif domain == "optimization":
-        # For knapsack-style problems, we show both Greedy and DP variants
         return {
             "Fractional Knapsack (Decimal)": GREEDY_ALGORITHMS["Fractional Knapsack (Decimal)"],
             "Knapsack 0/1": DP_ALGORITHMS["Knapsack 0/1"]
         }
         
     elif domain == "pathfinding":
-        # For shortest path problems, we show both Greedy (Dijkstra) and DP (Floyd)
         return {
             "Dijkstra's Algorithm": GREEDY_ALGORITHMS["Dijkstra's Algorithm"],
-            "Floyd Warshall": DP_ALGORITHMS["Floyd Warshall"]
+            "Floyd-Warshall": DP_ALGORITHMS["Floyd-Warshall"],
+            "Warshall's Algorithm": DP_ALGORITHMS["Warshall's Algorithm"]
         }
         
     elif domain == "mst":

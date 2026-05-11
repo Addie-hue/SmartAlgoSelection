@@ -22,32 +22,56 @@
         <h2><span class="icon">🧠</span> Describe Your Problem</h2>
         <textarea id="problemStatement" placeholder="e.g., Arrange the numbers [34, 12, 5, 78, 23] from smallest to largest..." rows="4"></textarea>
 
-        <!-- Image Upload -->
+        <!-- Step 1: Image OCR for Problem Text -->
         <div class="image-upload-area" id="imageUploadArea">
-                <div class="dual-upload-container">
-                    <div class="upload-zone" id="textDropzone">
-                        <div class="upload-icon">📝</div>
-                        <div class="upload-title">Step 1: Problem Text</div>
-                        <div class="upload-hint">Extract any algorithmic problem context</div>
-                        <input type="file" id="textImageInput" accept="image/*" hidden>
-                        <button class="upload-mini-btn" onclick="document.getElementById('textImageInput').click()">Browse Text</button>
-                    </div>
-                    <div class="upload-zone" id="graphDropzone">
-                        <div class="upload-icon">🕸️</div>
-                        <div class="upload-title">Step 2: Problem Data</div>
-                        <div class="upload-hint">Extract raw test data (Arrays, Graphs, Tables)</div>
-                        <input type="file" id="graphImageInput" accept="image/*" hidden>
-                        <button class="upload-mini-btn" onclick="document.getElementById('graphImageInput').click()">Browse Data</button>
-                    </div>
-                </div>
+            <div class="upload-zone" id="textDropzone">
+                <div class="upload-icon">📝</div>
+                <div class="upload-title">Scan Problem Text</div>
+                <div class="upload-hint">Upload image of the question / problem description</div>
+                <input type="file" id="textImageInput" accept="image/*" hidden>
+                <button class="upload-mini-btn" onclick="document.getElementById('textImageInput').click()">Browse Image</button>
+            </div>
+            
             <div class="ocr-status" id="ocrStatus" style="display:none">
                 <div class="spinner-small"></div>
-                <span>Extracting text from image...</span>
+                <span>Extracting text...</span>
             </div>
+            
             <div class="ocr-result" id="ocrResult" style="display:none">
-                <div class="ocr-label">📝 Extracted Text (editable):</div>
+                <div class="ocr-label">📝 Detected Text (Edit if needed):</div>
                 <textarea id="ocrText" rows="3"></textarea>
-                <button class="use-text-btn" onclick="useOcrText()">Use This Text ↓</button>
+                <button class="use-text-btn" onclick="useOcrText()">Apply to Description ↓</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Interactive Graph Architect -->
+        <div class="graph-architect glass-card">
+            <h3>🕸️ Interactive Graph Architect</h3>
+            <p class="architect-hint">Add connections to build your graph. Watch the live preview update!</p>
+            
+            <div class="architect-layout">
+                <div class="architect-controls">
+                    <div class="input-row">
+                        <input type="text" id="edgeFrom" placeholder="From (A)" class="mini-input">
+                        <input type="text" id="edgeTo" placeholder="To (B)" class="mini-input">
+                        <input type="number" id="edgeWeight" placeholder="Weight (5)" class="mini-input">
+                        <button class="add-edge-btn" onclick="addEdge()">Add Edge +</button>
+                    </div>
+                    
+                    <div class="edge-list-container">
+                        <div class="edge-list-header">Active Connections:</div>
+                        <div id="edgeList" class="edge-list">
+                            <div class="no-edges">No connections added yet.</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="architect-preview">
+                    <div class="preview-label">Live Preview</div>
+                    <div id="graphPreview" class="graph-svg-container">
+                        <svg id="liveGraphSvg" viewBox="0 0 400 300"></svg>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -124,107 +148,133 @@ document.getElementById('problemStatement').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); analyzeStatement(); }
 });
 
-async function preprocessImage(file) {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.drawImage(img, 0, 0);
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
-                for (let i = 0; i < data.length; i += 4) {
-                    const avg = (data[i] + data[i+1] + data[i+2]) / 3;
-                    const val = avg > 165 ? 255 : 0; // High contrast
-                    data[i] = data[i+1] = data[i+2] = val;
-                }
-                ctx.putImageData(imageData, 0, 0);
-                resolve(canvas.toDataURL());
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-    });
-}
+// ═══ GRAPH ARCHITECT LOGIC ═══
+let edges = [];
+let nodes = new Set();
 
-// ═══ DUAL-ZONE IMAGE PROCESSING ═══
-function setupDropzone(zoneId, inputId, isGraph) {
-    const zone = document.getElementById(zoneId);
-    const input = document.getElementById(inputId);
-    if (!zone || !input) return;
+function addEdge() {
+    const fromInput = document.getElementById('edgeFrom');
+    const toInput = document.getElementById('edgeTo');
+    const weightInput = document.getElementById('edgeWeight');
     
-    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-    zone.addEventListener('drop', e => {
-        e.preventDefault(); zone.classList.remove('drag-over');
-        if (e.dataTransfer.files.length) processImage(e.dataTransfer.files[0], isGraph);
-    });
-    input.addEventListener('change', e => { if (e.target.files.length) processImage(e.target.files[0], isGraph); });
+    const from = fromInput.value.trim().toUpperCase();
+    const to = toInput.value.trim().toUpperCase();
+    const weight = weightInput.value.trim();
+    
+    if (!from || !to || !weight) { alert("Please fill all edge fields."); return; }
+    
+    edges.push({ from, to, weight: parseFloat(weight) });
+    nodes.add(from); nodes.add(to);
+    
+    updateEdgeList();
+    renderGraph();
+    
+    // Reset and focus
+    toInput.value = '';
+    weightInput.value = '';
+    fromInput.focus();
 }
 
-setupDropzone('textDropzone', 'textImageInput', false);
-setupDropzone('graphDropzone', 'graphImageInput', true);
+function removeEdge(index) {
+    edges.splice(index, 1);
+    nodes = new Set();
+    edges.forEach(e => { nodes.add(e.from); nodes.add(e.to); });
+    updateEdgeList();
+    renderGraph();
+}
 
-async function processImage(file, isGraph) {
-    if (!file.type.startsWith('image/')) { showError('Please upload an image file.'); return; }
-    const ocrStatus = document.getElementById('ocrStatus');
-    const ocrResult = document.getElementById('ocrResult');
-    const statusText = ocrStatus.querySelector('span');
-    ocrStatus.style.display = 'flex'; ocrResult.style.display = 'none';
+function updateEdgeList() {
+    const list = document.getElementById('edgeList');
+    if (edges.length === 0) {
+        list.innerHTML = '<div class="no-edges">No connections added yet.</div>';
+        return;
+    }
+    
+    list.innerHTML = edges.map((e, i) => `
+        <div class="edge-item">
+            <span><strong>${e.from}</strong> ↔ <strong>${e.to}</strong> (wt: ${e.weight})</span>
+            <button class="remove-btn" onclick="removeEdge(${i})">×</button>
+        </div>
+    `).join('');
+}
 
+function renderGraph() {
+    const svg = document.getElementById('liveGraphSvg');
+    svg.innerHTML = '';
+    const nodeArray = Array.from(nodes);
+    const nodePositions = {};
+    const centerX = 200, centerY = 150, radius = 100;
+    
+    nodeArray.forEach((node, i) => {
+        const angle = (i / nodeArray.length) * 2 * Math.PI;
+        nodePositions[node] = {
+            x: centerX + radius * Math.cos(angle),
+            y: centerY + radius * Math.sin(angle)
+        };
+    });
+    
+    edges.forEach(e => {
+        const start = nodePositions[e.from];
+        const end = nodePositions[e.to];
+        if (!start || !end) return;
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", start.x); line.setAttribute("y1", start.y);
+        line.setAttribute("x2", end.x); line.setAttribute("y2", end.y);
+        line.setAttribute("stroke", "#60a5fa"); line.setAttribute("stroke-width", "2");
+        line.setAttribute("opacity", "0.5");
+        svg.appendChild(line);
+        
+        const weight = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        weight.setAttribute("x", (start.x + end.x) / 2); weight.setAttribute("y", (start.y + end.y) / 2 - 5);
+        weight.setAttribute("fill", "#60a5fa"); weight.setAttribute("font-size", "10");
+        weight.setAttribute("text-anchor", "middle");
+        weight.textContent = e.weight;
+        svg.appendChild(weight);
+    });
+    
+    nodeArray.forEach(node => {
+        const pos = nodePositions[node];
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", pos.x); circle.setAttribute("cy", pos.y); circle.setAttribute("r", "15");
+        circle.setAttribute("fill", "#1e293b"); circle.setAttribute("stroke", "#60a5fa"); circle.setAttribute("stroke-width", "2");
+        svg.appendChild(circle);
+        
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", pos.x); text.setAttribute("y", pos.y + 5);
+        text.setAttribute("fill", "white"); text.setAttribute("font-size", "12"); text.setAttribute("text-anchor", "middle");
+        text.textContent = node;
+        svg.appendChild(text);
+    });
+}
+
+// ═══ OCR LOGIC ═══
+const textDropzone = document.getElementById('textDropzone');
+const textImageInput = document.getElementById('textImageInput');
+
+textDropzone.addEventListener('dragover', e => { e.preventDefault(); textDropzone.classList.add('drag-over'); });
+textDropzone.addEventListener('dragleave', () => textDropzone.classList.remove('drag-over'));
+textDropzone.addEventListener('drop', e => {
+    e.preventDefault(); textDropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) processTextImage(e.dataTransfer.files[0]);
+});
+textImageInput.addEventListener('change', e => { if (e.target.files.length) processTextImage(e.target.files[0]); });
+
+async function processTextImage(file) {
+    const status = document.getElementById('ocrStatus');
+    const result = document.getElementById('ocrResult');
+    status.style.display = 'flex'; result.style.display = 'none';
     try {
-        const processedImage = await preprocessImage(file);
-        const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
-            logger: m => {
-                if (m.status === 'recognizing text') {
-                    statusText.textContent = isGraph ? `Inferring Graph... ${Math.round(m.progress * 100)}%` : `Reading Question... ${Math.round(m.progress * 100)}%`;
-                }
-            }
-        });
-        
-        ocrStatus.style.display = 'none';
-        ocrResult.style.display = 'block';
-        
-        let cleaned = text.replace(/[^\w\s\.\,\:\-\(\)\[\]\=]/g, ' ').replace(/\s+/g, ' '); 
-        let finalOutput = cleaned;
-
-        if (isGraph) {
-            const edgeRegex = /([A-Z])\s*[\-\:\s]*\s*([A-Z])\s*[\(\:\s]*\s*(\d+)/gi;
-            let inferredEdges = [];
-            let m;
-            while ((m = edgeRegex.exec(cleaned)) !== null) {
-                inferredEdges.push(`(${m[1].toUpperCase()}, ${m[2].toUpperCase()}, ${m[3]})`);
-            }
-            finalOutput = `--- 🕸️ INFERRED GRAPH DATA ---\n`;
-            if (inferredEdges.length > 0) {
-                finalOutput += `Detected Edges: ${[...new Set(inferredEdges)].join(', ')}\n\n[Graph Data]:\n${inferredEdges.join('\n')}`;
-            } else {
-                finalOutput += `No clear edges found. Tip: Type 'A-B: 5' manually below.\n\nRaw Text: ${cleaned.substring(0, 200)}...`;
-            }
-        } else {
-            finalOutput = `--- 📝 INFERRED PROBLEM TEXT ---\n${cleaned}`;
-        }
-        
-        const currentVal = document.getElementById('ocrText').value;
-        document.getElementById('ocrText').value = (currentVal ? currentVal + '\n\n' : '') + finalOutput.trim();
-        statusText.textContent = "Extracting text from image...";
+        const { data: { text } } = await Tesseract.recognize(file, 'eng');
+        document.getElementById('ocrText').value = text.trim();
+        status.style.display = 'none'; result.style.display = 'block';
     } catch (err) {
-        console.error(err);
-        ocrStatus.style.display = 'none';
-        showError("OCR extraction failed.");
+        status.style.display = 'none';
+        alert("OCR failed: " + err.message);
     }
 }
 
 function useOcrText() {
-    const text = document.getElementById('ocrText').value.trim();
-    if (text) {
-        document.getElementById('problemStatement').value = text;
-        document.getElementById('problemStatement').focus();
-    }
+    document.getElementById('problemStatement').value = document.getElementById('ocrText').value;
 }
 
 // ═══ SAMPLE QUESTIONS ═══
@@ -278,11 +328,24 @@ function useSampleQ(el) {
 let chartInstance = null;
 
 async function analyzeStatement() {
-    const stmt = document.getElementById('problemStatement').value.trim();
+    let baseStmt = document.getElementById('problemStatement').value.trim();
     const btn = document.getElementById('analyzeBtn');
     const errEl = document.getElementById('errorMsg');
     const resEl = document.getElementById('results');
-    if (!stmt) { showError('Please enter a problem statement.'); return; }
+    
+    // If no text but graph exists, provide a default context
+    if (!baseStmt && edges.length > 0) {
+        baseStmt = "Analyze the structure and properties of the following graph.";
+    }
+    
+    if (!baseStmt) { showError('Please enter a problem description or build a graph.'); return; }
+    
+    // Auto-inject graph data if edges exist
+    let stmt = baseStmt;
+    if (edges.length > 0) {
+        stmt += "\n\nGraph Connections: " + edges.map(e => `(${e.from}, ${e.to}, ${e.weight})`).join(', ');
+    }
+    
     btn.classList.add('loading'); btn.disabled = true;
     errEl.style.display = 'none'; resEl.style.display = 'none';
     try {
@@ -293,7 +356,10 @@ async function analyzeStatement() {
         const data = await r.json();
         if (!r.ok) { showError(data.error || 'Analysis failed.'); return; }
         renderResults(data);
-    } catch(e) { showError('Connection error.'); console.error(e); }
+    } catch(e) { 
+        console.error(e);
+        showError('Connection error: Is the Python server running? Try restarting it.'); 
+    }
     finally { btn.classList.remove('loading'); btn.disabled = false; }
 }
 

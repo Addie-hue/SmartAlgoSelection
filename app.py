@@ -87,7 +87,8 @@ def benchmark_shortest_path(size, is_all_pairs=False, data=None):
 
     times = {
         "Dijkstra's Algorithm": dijkstra_time,
-        "Floyd Warshall": dp.floyd_warshall(graph)
+        "Floyd-Warshall": dp.floyd_warshall(graph),
+        "Warshall's Algorithm": dp.warshall_algorithm(graph)
     }
     preview = f"Adjacency Matrix ({V}x{V}) for {'All-Pairs' if is_all_pairs else 'Single-Source'} shortest path"
     return {"times": times, "preview": preview, "data_desc": preview_desc}
@@ -146,18 +147,19 @@ SAMPLE_QUESTIONS = {
         "MERGE SORT: Organize 2000 sensor readings efficiently",
         "QUICK SORT: Arrange a list of 1500 coordinates by their X-value"
     ],
-    "GREEDY METHOD (Optimization & Paths)": [
-        "OVERALL (Shortest Path): Compare Single-Source pathfinding algorithms for 50 nodes",
+    "GREEDY METHOD (MST & Paths)": [
+        "OVERALL (Shortest Path): Compare Dijkstra vs others for 50 intersections",
         "OVERALL (MST): Compare Prim's vs Kruskal's for a 30-node computer network",
         "KNAPSACK (DECIMAL): Optimize a bag with capacity 50 using fractional selection",
-        "PRIMS ALGO: Find the minimum cost wiring for a new office layout with 15 nodes",
-        "KRUSKAL ALGO: Connect 20 cities into a single network with minimum total distance",
+        "PRIMS ALGO: Find the minimum cost wiring for a new office layout with 15 nodes (MST)",
+        "KRUSKAL ALGO: Connect 20 cities into a single network with minimum total distance (MST)",
         "DIJKSTRA'S: Find the fastest single-source route through 40 intersections"
     ],
     "DYNAMIC PROGRAMMING": [
-        "OVERALL: Compare DP vs Greedy for optimization problems",
-        "KNAPSACK 0/1: Best subset of 20 items (cannot be broken). Weights=[2,5,10...], Values=[3,6,12...], Cap=50",
-        "FLOYD WARSHALL: Calculate all-pairs shortest paths for every city in a 20-node network",
+        "OVERALL: Compare Greedy (Fractional) vs DP (0/1) for a 20-item Knapsack optimization scenario",
+        "KNAPSACK 0/1: Find the best subset of 20 discrete items. Weights=[2,5,10,12,15], Values=[3,6,12,18,20], Capacity=50",
+        "FLOYD-WARSHALL: Calculate all-pairs shortest paths for every city in a 20-node network",
+        "WARSHALL'S ALGO: Compute reachability (Transitive Closure) for all nodes in a 25-vertex graph",
         "MULTISTAGE GRAPH: Find the shortest path through 5 stages of a 40-node pipeline network"
     ]
 }
@@ -175,94 +177,98 @@ def sample_questions():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    data = request.get_json()
-    statement = data.get("statement", "").strip()
-    if not statement:
-        return jsonify({"error": "Please enter a problem statement."}), 400
+    try:
+        data = request.get_json()
+        statement = data.get("statement", "").strip()
+        if not statement:
+            return jsonify({"error": "Please enter a problem statement."}), 400
 
-    analysis = analyze_problem(statement)
-    if analysis.get("error"):
-        return jsonify({"error": analysis["error"]}), 400
+        analysis = analyze_problem(statement)
+        if analysis.get("error"):
+            return jsonify({"error": analysis["error"]}), 400
 
-    domain = analysis["domain"]
-    input_size = analysis["input_size"]
+        domain = analysis["domain"]
+        input_size = analysis["input_size"]
 
-    # Dispatch to relevant benchmark group
-    ex_data = analysis.get("extracted_data")
-    if domain == "ordering":
-        bench = benchmark_sorting(input_size, ex_data)
-    elif domain == "optimization":
-        bench = benchmark_knapsack(input_size, ex_data)
-    elif domain == "pathfinding":
-        bench = benchmark_shortest_path(input_size, analysis.get("is_all_pairs", False), ex_data)
-    elif domain == "mst":
-        bench = benchmark_mst(input_size, ex_data)
-    elif domain == "staged":
-        bench = benchmark_staged(input_size, ex_data)
-    else:
-        return jsonify({"error": "No benchmark available for this domain."}), 400
+        # Dispatch to relevant benchmark group
+        ex_data = analysis.get("extracted_data")
+        if domain == "ordering":
+            bench = benchmark_sorting(input_size, ex_data)
+        elif domain == "optimization":
+            bench = benchmark_knapsack(input_size, ex_data)
+        elif domain == "pathfinding":
+            bench = benchmark_shortest_path(input_size, analysis.get("is_all_pairs", False), ex_data)
+        elif domain == "mst":
+            bench = benchmark_mst(input_size, ex_data)
+        elif domain == "staged":
+            bench = benchmark_staged(input_size, ex_data)
+        else:
+            return jsonify({"error": "No benchmark available for this domain."}), 400
 
-    algos_data = get_algorithms(domain)
-    times = bench["times"]
-    
-    # Identify the best (fastest) algorithm in the group
-    best_name = min(times, key=times.get)
-    best_time = times[best_name]
-
-    # Build algorithm details for display
-    algo_list = []
-    for name, info in algos_data.items():
-        t = times.get(name)
-        if t is None: continue
+        algos_data = get_algorithms(domain)
+        times = bench["times"]
         
-        is_best = (name == best_name)
-        speedup = round(t / best_time, 2) if t and best_time and not is_best and best_time > 0 else None
+        # Identify the best (fastest) algorithm in the group
+        best_name = min(times, key=times.get)
+        best_time = times[best_name]
+
+        # Build algorithm details for display
+        algo_list = []
+        for name, info in algos_data.items():
+            t = times.get(name)
+            if t is None: continue
+            
+            is_best = (name == best_name)
+            speedup = round(t / best_time, 2) if t and best_time and not is_best and best_time > 0 else None
+            
+            algo_list.append({
+                "name": name,
+                "paradigm": info["paradigm"],
+                "time_best": info["time_best"],
+                "time_avg": info["time_avg"],
+                "time_worst": info["time_worst"],
+                "space": info["space"],
+                "description": info["description"],
+                "pros": info["pros"],
+                "cons": info["cons"],
+                "best_when": info["best_when"],
+                "actual_time": round(t, 8),
+                "is_best": is_best,
+                "speedup_vs_best": speedup,
+            })
+
+        # Sort so best is at top
+        algo_list.sort(key=lambda x: (not x["is_best"], x["actual_time"]))
+
+        best_info = algos_data[best_name]
         
-        algo_list.append({
-            "name": name,
-            "paradigm": info["paradigm"],
-            "time_best": info["time_best"],
-            "time_avg": info["time_avg"],
-            "time_worst": info["time_worst"],
-            "space": info["space"],
-            "description": info["description"],
-            "pros": info["pros"],
-            "cons": info["cons"],
-            "best_when": info["best_when"],
-            "actual_time": round(t, 8),
-            "is_best": is_best,
-            "speedup_vs_best": speedup,
+        return jsonify({
+            "analysis": {
+                "original_statement": analysis["original_statement"],
+                "domain": domain,
+                "paradigm": analysis["paradigm"],
+                "paradigm_reasoning": analysis["paradigm_reasoning"],
+                "selection_justification": analysis["selection_justification"], # Justification for choosing these algos
+                "input_size": input_size,
+                "size_source": analysis["size_source"],
+                "matched_keywords": analysis["matched_keywords"],
+                "extracted_data": ex_data
+            },
+            "best_algorithm": {
+                "name": best_name,
+                "time": round(best_time, 8),
+                "paradigm": best_info["paradigm"],
+                "info": best_info,
+            },
+            "all_algorithms": algo_list,
+            "benchmark": {
+                "preview": bench["preview"],
+                "data_desc": bench["data_desc"],
+            },
         })
-
-    # Sort so best is at top
-    algo_list.sort(key=lambda x: (not x["is_best"], x["actual_time"]))
-
-    best_info = algos_data[best_name]
-    
-    return jsonify({
-        "analysis": {
-            "original_statement": analysis["original_statement"],
-            "domain": domain,
-            "paradigm": analysis["paradigm"],
-            "paradigm_reasoning": analysis["paradigm_reasoning"],
-            "selection_justification": analysis["selection_justification"], # Justification for choosing these algos
-            "input_size": input_size,
-            "size_source": analysis["size_source"],
-            "matched_keywords": analysis["matched_keywords"],
-            "extracted_data": ex_data
-        },
-        "best_algorithm": {
-            "name": best_name,
-            "time": round(best_time, 8),
-            "paradigm": best_info["paradigm"],
-            "info": best_info,
-        },
-        "all_algorithms": algo_list,
-        "benchmark": {
-            "preview": bench["preview"],
-            "data_desc": bench["data_desc"],
-        },
-    })
+    except Exception as e:
+        print(f"CRITICAL ERROR: {str(e)}")
+        return jsonify({"error": f"Server Error: {str(e)}"}), 500
 
 
 if __name__ == "__main__":

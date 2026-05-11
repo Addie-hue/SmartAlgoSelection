@@ -62,3 +62,17 @@ def knapsack_brute(W, wt, val, n):
     solve(W, wt, val, min(n, 20)) 
     
     return time.perf_counter() - start_time
+
+def warshall_algorithm(graph):
+    # graph is an adjacency matrix; reachability is 1 if path exists, 0 otherwise
+    start_time = time.perf_counter()
+    V = len(graph)
+    reach = [[1 if graph[i][j] != float('inf') else 0 for j in range(V)] for i in range(V)]
+    for i in range(V): reach[i][i] = 1 # Self-reachability
+    
+    for k in range(V):
+        for i in range(V):
+            for j in range(V):
+                reach[i][j] = reach[i][j] or (reach[i][k] and reach[k][j])
+    
+    return time.perf_counter() - start_time
