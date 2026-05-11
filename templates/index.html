@@ -3,121 +3,373 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Algorithm Predictor</title>
+    <title>SmartAlgoSelection — AI Algorithm Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 40px 20px; display: flex; justify-content: center; }
-        .dashboard { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 800px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; border: 1px solid #334155; }
-        .full-width { grid-column: 1 / -1; }
-        h2 { margin-top: 0; color: #38bdf8; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #334155; padding-bottom: 10px;}
-        label { display: block; margin: 15px 0 5px; font-weight: 600; font-size: 14px; color: #94a3b8; }
-        select, input { width: 100%; padding: 12px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #f8fafc; font-size: 14px; box-sizing: border-box; }
-        button { background: #0284c7; color: #fff; border: none; padding: 14px; width: 100%; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 20px; transition: 0.2s; }
-        button:hover { background: #0369a1; }
-        .result-panel { background: #0f172a; padding: 20px; border-radius: 8px; border-left: 4px solid #38bdf8; }
-        .highlight-text { font-size: 22px; font-weight: bold; color: #38bdf8; margin: 5px 0 15px; }
-        .chart-container { background: #0f172a; padding: 15px; border-radius: 8px; border: 1px solid #334155; }
-        .preview-box { font-family: monospace; background: #000; padding: 10px; border-radius: 4px; font-size: 12px; color: #4ade80; word-break: break-all; }
-        
-        /* Mobile responsiveness */
-        @media (max-width: 768px) { .dashboard { grid-template-columns: 1fr; } }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
+<div class="app-container">
 
-<div class="dashboard">
-    <div class="full-width">
-        <h2>🤖 Smart Algorithm Selection Engine</h2>
-    </div>
+    <header class="header">
+        <div class="header-badge">⚡ AI-Powered Engine</div>
+        <h1>Smart Algorithm Selection</h1>
+        <p>Describe your problem in plain English. The AI detects the problem type, extracts inputs, selects the best paradigm, and benchmarks every applicable algorithm.</p>
+    </header>
 
-    <div class="input-section">
-        <form method="POST">
-            <label>Problem Category:</label>
-            <select name="problem_type">
-                <option value="Sorting">Sorting (Divide & Conquer / Brute Force)</option>
-                <option value="Knapsack">Knapsack (Dynamic Programming)</option>
-                <option value="Shortest Path">Shortest Path (Floyd-Warshall)</option>
-                <option value="Multistage Graph">Multistage Graph Routing</option>
-            </select>
+    <!-- INPUT SECTION -->
+    <section class="glass-card input-section">
+        <h2><span class="icon">🧠</span> Describe Your Problem</h2>
+        <textarea id="problemStatement" placeholder="e.g., Arrange the numbers [34, 12, 5, 78, 23] from smallest to largest..." rows="4"></textarea>
 
-            <label>Input Size (N items/vertices):</label>
-            <input type="number" name="input_size" required placeholder="e.g., 5000">
-
-            <button type="submit">Predict & Execute Run</button>
-        </form>
-    </div>
-
-    <div class="results-section">
-        {% if result_data %}
-        <div class="result-panel">
-            <div style="font-size: 13px; color: #94a3b8; text-transform: uppercase;">AI Optimal Prediction</div>
-            <div class="highlight-text">{{ result_data.prediction }}</div>
-            
-            <div style="font-size: 13px; color: #94a3b8; margin-bottom: 5px;">Generated Data Preview</div>
-            <div class="preview-box">{{ result_data.preview }}</div>
+        <!-- Image Upload -->
+        <div class="image-upload-area" id="imageUploadArea">
+            <div class="upload-dropzone" id="dropzone">
+                <span class="upload-icon">📷</span>
+                <span class="upload-text">Drag & drop an image here, or <label for="imageInput" class="upload-link">browse</label></span>
+                <span class="upload-hint">Extract problem text from images of questions, graphs, or tables</span>
+                <input type="file" id="imageInput" accept="image/*" hidden>
+            </div>
+            <div class="ocr-status" id="ocrStatus" style="display:none">
+                <div class="spinner-small"></div>
+                <span>Extracting text from image...</span>
+            </div>
+            <div class="ocr-result" id="ocrResult" style="display:none">
+                <div class="ocr-label">📝 Extracted Text (editable):</div>
+                <textarea id="ocrText" rows="3"></textarea>
+                <button class="use-text-btn" onclick="useOcrText()">Use This Text ↓</button>
+            </div>
         </div>
-        {% else %}
-        <div class="result-panel" style="border-left-color: #475569; color: #94a3b8;">
-            Awaiting system input to begin algorithmic profiling...
+
+        <!-- Sample Questions Toggle -->
+        <button class="sample-toggle-btn" onclick="toggleSamples()">
+            📚 Show Sample Questions for Testing
+        </button>
+        <div class="sample-questions-panel" id="samplePanel" style="display:none"></div>
+
+        <!-- Example Chips -->
+        <div class="example-prompts">
+            <span class="example-chip" data-prompt="Arrange the numbers [34, 12, 5, 78, 23, 45, 11, 67] from smallest to largest">Sort given array</span>
+            <span class="example-chip" data-prompt="Organize 5000 random values in ascending order">Sort 5000 values</span>
+            <span class="example-chip" data-prompt="Given items with weights = [2, 3, 4, 5] and values = [3, 4, 5, 6], capacity = 8, maximize total value">Knapsack with data</span>
+            <span class="example-chip" data-prompt="Find minimum travel distance between every pair of 40 cities connected by roads">Shortest paths</span>
+            <span class="example-chip" data-prompt="Order 100 employee records from lowest to highest salary">Sort 100 records</span>
         </div>
-        {% endif %}
+
+        <button class="analyze-btn" id="analyzeBtn" onclick="analyzeStatement()">
+            <span class="btn-text">🔬 Analyze & Benchmark</span>
+            <div class="spinner"></div>
+        </button>
+    </section>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <!-- RESULTS -->
+    <div id="results">
+        <div class="analysis-summary" id="analysisSummary"></div>
+        <div id="extractedDataCard" style="display:none"></div>
+        <div id="bestAlgoCard"></div>
+        <div class="glass-card data-preview" id="dataPreview"></div>
+        <section class="glass-card chart-section">
+            <h3>📊 Performance Benchmark (Lower = Better)</h3>
+            <div class="chart-wrapper"><canvas id="perfChart"></canvas></div>
+        </section>
+        <section class="glass-card algo-comparison">
+            <h3>📋 All Applicable Algorithms — Comparison</h3>
+            <div class="algo-table-wrapper">
+                <table class="algo-table">
+                    <thead><tr>
+                        <th>Algorithm</th><th>Paradigm</th><th>Best</th><th>Average</th><th>Worst</th><th>Space</th><th>Actual Time</th><th>vs Best</th>
+                    </tr></thead>
+                    <tbody id="algoTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+        <section class="glass-card algo-details-section">
+            <h3>🔍 Detailed Analysis — Why Each Algorithm Was / Wasn't Chosen</h3>
+            <div class="algo-detail-cards" id="algoDetailCards"></div>
+        </section>
     </div>
+</div>
 
-    {% if result_data %}
-    <div class="full-width chart-container">
-        <h3 style="color: #94a3b8; font-size: 14px; text-transform: uppercase; margin-top: 0;">Performance Analysis Graph (Lower is Better)</h3>
-        <canvas id="performanceChart" height="80"></canvas>
-    </div>
+<script>
+// ═══ EVENT LISTENERS ═══
+document.querySelectorAll('.example-chip').forEach(c => {
+    c.addEventListener('click', () => {
+        document.getElementById('problemStatement').value = c.dataset.prompt;
+        document.getElementById('problemStatement').focus();
+    });
+});
+document.getElementById('problemStatement').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); analyzeStatement(); }
+});
 
-   <script>
-        const ctx = document.getElementById('performanceChart').getContext('2d');
-        
-        // Wrapping the Flask tags in quotes fixes the VS Code linter errors!
-        const predTime = parseFloat("{{ result_data.pred_time }}");
-        const compTime = parseFloat("{{ result_data.comp_time }}");
-        const predLabel = "{{ result_data.prediction }} (AI Choice)";
-        const compLabel = "{{ result_data.comp_algo }} (Competitor)";
+// ═══ IMAGE UPLOAD + OCR ═══
+const dropzone = document.getElementById('dropzone');
+const imageInput = document.getElementById('imageInput');
 
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: [predLabel, compLabel],
-                datasets: [{
-                    label: 'Execution Time (Seconds)',
-                    data: [predTime, compTime],
-                    backgroundColor: [
-                        'rgba(56, 189, 248, 0.8)', // Blue for AI
-                        'rgba(248, 113, 113, 0.8)'  // Red for Competitor
-                    ],
-                    borderColor: [
-                        'rgb(56, 189, 248)',
-                        'rgb(248, 113, 113)'
-                    ],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                indexAxis: 'y', // Makes it a horizontal bar chart
-                scales: {
-                    x: {
-                        beginAtZero: true,
-                        grid: { color: '#334155' },
-                        ticks: { color: '#94a3b8' }
-                    },
-                    y: {
-                        grid: { display: false },
-                        ticks: { color: '#f8fafc', font: { size: 14 } }
-                    }
-                },
-                plugins: {
-                    legend: { display: false }
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) processImage(e.dataTransfer.files[0]);
+});
+imageInput.addEventListener('change', e => { if (e.target.files.length) processImage(e.target.files[0]); });
+
+async function processImage(file) {
+    if (!file.type.startsWith('image/')) { showError('Please upload an image file.'); return; }
+    const ocrStatus = document.getElementById('ocrStatus');
+    const ocrResult = document.getElementById('ocrResult');
+    ocrStatus.style.display = 'flex'; ocrResult.style.display = 'none';
+
+    try {
+        const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    ocrStatus.querySelector('span').textContent = `Extracting text... ${Math.round(m.progress * 100)}%`;
                 }
             }
         });
-    </script>
-    {% endif %}
+        ocrStatus.style.display = 'none';
+        document.getElementById('ocrText').value = text.trim();
+        ocrResult.style.display = 'block';
+    } catch(err) {
+        ocrStatus.style.display = 'none';
+        showError('OCR failed: ' + err.message);
+    }
+}
 
-</div>
+function useOcrText() {
+    const text = document.getElementById('ocrText').value.trim();
+    if (text) {
+        document.getElementById('problemStatement').value = text;
+        document.getElementById('problemStatement').focus();
+    }
+}
 
+// ═══ SAMPLE QUESTIONS ═══
+let samplesLoaded = false;
+async function toggleSamples() {
+    const panel = document.getElementById('samplePanel');
+    if (panel.style.display === 'none') {
+        if (!samplesLoaded) {
+            try {
+                const r = await fetch('/sample-questions');
+                const data = await r.json();
+                let html = '';
+                for (const [category, questions] of Object.entries(data)) {
+                    html += `<div class="sample-category">
+                        <div class="sample-cat-title">${category}</div>
+                        ${questions.map(q => `<div class="sample-q" onclick="useSampleQ(this)">${q}</div>`).join('')}
+                    </div>`;
+                }
+                panel.innerHTML = html;
+                samplesLoaded = true;
+            } catch(e) { panel.innerHTML = '<p style="color:var(--accent-danger)">Failed to load samples</p>'; }
+        }
+        panel.style.display = 'block';
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+function useSampleQ(el) {
+    document.getElementById('problemStatement').value = el.textContent;
+    document.getElementById('problemStatement').focus();
+    document.getElementById('samplePanel').style.display = 'none';
+}
+
+// ═══ MAIN ANALYSIS ═══
+let chartInstance = null;
+
+async function analyzeStatement() {
+    const stmt = document.getElementById('problemStatement').value.trim();
+    const btn = document.getElementById('analyzeBtn');
+    const errEl = document.getElementById('errorMsg');
+    const resEl = document.getElementById('results');
+    if (!stmt) { showError('Please enter a problem statement.'); return; }
+    btn.classList.add('loading'); btn.disabled = true;
+    errEl.style.display = 'none'; resEl.style.display = 'none';
+    try {
+        const r = await fetch('/analyze', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({statement: stmt}),
+        });
+        const data = await r.json();
+        if (!r.ok) { showError(data.error || 'Analysis failed.'); return; }
+        renderResults(data);
+    } catch(e) { showError('Connection error.'); console.error(e); }
+    finally { btn.classList.remove('loading'); btn.disabled = false; }
+}
+
+function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg; el.style.display = 'block';
+}
+
+// ═══ RENDER RESULTS ═══
+function renderResults(data) {
+    document.getElementById('results').style.display = 'block';
+    renderSummary(data.analysis);
+    renderExtracted(data.analysis.extracted_data);
+    renderBest(data.best_algorithm, data.analysis);
+    renderPreview(data.benchmark);
+    renderChart(data.all_algorithms);
+    renderTable(data.all_algorithms);
+    renderCards(data.all_algorithms);
+    document.getElementById('results').scrollIntoView({behavior:'smooth'});
+}
+
+function renderSummary(a) {
+    const domainLabel = a.domain === 'ordering' ? 'Sorting / Ordering' :
+                        a.domain === 'optimization' ? 'Optimization (Knapsack)' :
+                        a.domain === 'pathfinding' ? 'Shortest Path' : a.domain;
+    document.getElementById('analysisSummary').innerHTML = `
+        <div class="summary-item">
+            <div class="summary-label">Detected Domain</div>
+            <div class="summary-value type-value">${domainLabel}</div>
+        </div>
+        <div class="summary-item">
+            <div class="summary-label">Best Paradigm</div>
+            <div class="summary-value type-value">${a.paradigm}</div>
+            <div class="summary-sub">${a.paradigm_reasoning}</div>
+        </div>
+        <div class="summary-item">
+            <div class="summary-label">Input Size (N)</div>
+            <div class="summary-value">${a.input_size.toLocaleString()}</div>
+            <div class="summary-sub">From: "${a.size_source}"</div>
+        </div>
+        <div class="summary-item">
+            <div class="summary-label">Matched Keywords</div>
+            <div class="keywords-list">
+                ${a.matched_keywords.map(k => `<span class="keyword-tag">${k}</span>`).join('')}
+            </div>
+        </div>`;
+}
+
+function renderExtracted(ext) {
+    const card = document.getElementById('extractedDataCard');
+    if (!ext || (!ext.array && !ext.knapsack && !ext.graph)) {
+        card.style.display = 'none'; return;
+    }
+    let html = '<div class="glass-card extracted-card"><h3>📥 Extracted Input Data (from your question)</h3><div class="extracted-grid">';
+    if (ext.array) {
+        html += `<div class="extracted-item"><span class="extracted-label">Array</span><code>[${ext.array.join(', ')}]</code></div>`;
+    }
+    if (ext.knapsack) {
+        const ks = ext.knapsack;
+        if (ks.weights) html += `<div class="extracted-item"><span class="extracted-label">Weights</span><code>[${ks.weights.join(', ')}]</code></div>`;
+        if (ks.values) html += `<div class="extracted-item"><span class="extracted-label">Values</span><code>[${ks.values.join(', ')}]</code></div>`;
+        if (ks.capacity) html += `<div class="extracted-item"><span class="extracted-label">Capacity</span><code>${ks.capacity}</code></div>`;
+    }
+    if (ext.graph) {
+        const g = ext.graph;
+        if (g.nodes) html += `<div class="extracted-item"><span class="extracted-label">Nodes</span><code>${g.nodes}</code></div>`;
+        if (g.matrix_size) html += `<div class="extracted-item"><span class="extracted-label">Matrix</span><code>${g.matrix_size}</code></div>`;
+        if (g.edges) html += `<div class="extracted-item"><span class="extracted-label">Edges</span><code>${g.edges.length} edges</code></div>`;
+    }
+    html += '</div></div>';
+    card.innerHTML = html; card.style.display = 'block';
+}
+
+function renderBest(best, a) {
+    const i = best.info;
+    document.getElementById('bestAlgoCard').innerHTML = `
+        <div class="best-algo-card">
+            <div class="best-badge">⭐ AI Recommendation — Best Algorithm</div>
+            <div class="best-algo-name">${best.name}</div>
+            <div class="best-algo-paradigm">${best.paradigm} • N = ${a.input_size.toLocaleString()}</div>
+            <div class="best-algo-desc">${i.description}</div>
+            <div class="best-complexity-grid">
+                <div class="complexity-chip"><span class="label">Best</span><span class="value">${i.time_best}</span></div>
+                <div class="complexity-chip"><span class="label">Average</span><span class="value">${i.time_avg}</span></div>
+                <div class="complexity-chip"><span class="label">Worst</span><span class="value">${i.time_worst}</span></div>
+                <div class="complexity-chip"><span class="label">Space</span><span class="value">${i.space}</span></div>
+            </div>
+            <div class="best-time-display">
+                <span class="time-label">Benchmark:</span>
+                <span class="time-value">${best.time.toFixed(8)}</span>
+                <span class="time-unit">seconds</span>
+            </div>
+        </div>`;
+}
+
+function renderPreview(b) {
+    document.getElementById('dataPreview').innerHTML = `
+        <h3>🗂️ Test Data Used</h3>
+        <div class="preview-box">${b.data_desc}<br>${b.preview}</div>`;
+}
+
+function renderChart(algos) {
+    if (chartInstance) chartInstance.destroy();
+    const ctx = document.getElementById('perfChart').getContext('2d');
+    const pColors = {
+        'Brute Force':'rgba(248,113,113,0.8)','Decrease and Conquer':'rgba(167,139,250,0.8)',
+        'Divide and Conquer':'rgba(56,189,248,0.8)','Dynamic Programming':'rgba(251,191,36,0.8)',
+    };
+    chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: algos.map(a => a.name),
+            datasets: [{
+                label: 'Time (s)',
+                data: algos.map(a => a.actual_time),
+                backgroundColor: algos.map(a => a.is_best ? 'rgba(52,211,153,0.85)' : (pColors[a.paradigm]||'rgba(148,163,184,0.6)')),
+                borderColor: algos.map(a => a.is_best ? 'rgb(52,211,153)' : 'rgba(148,163,184,0.4)'),
+                borderWidth: 1, borderRadius: 6,
+            }],
+        },
+        options: {
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            scales: {
+                x: {beginAtZero:true, grid:{color:'rgba(71,85,105,0.3)'}, ticks:{color:'#94a3b8',font:{family:"'JetBrains Mono',monospace",size:11}}},
+                y: {grid:{display:false}, ticks:{color:'#f1f5f9',font:{family:"'Inter',sans-serif",size:12,weight:600}}},
+            },
+            plugins: {legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.raw.toFixed(8)}s`}}},
+        },
+    });
+    document.getElementById('perfChart').parentElement.style.height = `${Math.max(200, algos.length*55)}px`;
+}
+
+function renderTable(algos) {
+    document.getElementById('algoTableBody').innerHTML = algos.map(a => `
+        <tr class="${a.is_best?'best-row':''}">
+            <td><div class="algo-name-cell">${a.is_best?'<span class="best-star">⭐</span>':''}${a.name}</div></td>
+            <td><span class="paradigm-badge ${pClass(a.paradigm)}">${a.paradigm}</span></td>
+            <td class="complexity-cell">${a.time_best}</td>
+            <td class="complexity-cell">${a.time_avg}</td>
+            <td class="complexity-cell">${a.time_worst}</td>
+            <td class="complexity-cell">${a.space}</td>
+            <td class="time-cell ${a.is_best?'best-time':''}">${a.actual_time?a.actual_time.toFixed(8)+'s':'—'}</td>
+            <td class="speedup-cell">${a.is_best
+                ?'<span style="color:var(--accent-success);font-weight:700">✓ FASTEST</span>'
+                :(a.speedup_vs_best?`<span class="slower">${a.speedup_vs_best}× slower</span>`:'—')}</td>
+        </tr>`).join('');
+}
+
+function pClass(p) {
+    return {'Brute Force':'brute-force','Decrease and Conquer':'decrease-conquer','Divide and Conquer':'divide-conquer','Dynamic Programming':'dynamic-programming'}[p]||'';
+}
+
+function renderCards(algos) {
+    document.getElementById('algoDetailCards').innerHTML = algos.map(a => `
+        <div class="algo-detail-card ${a.is_best?'is-best':''}">
+            <div class="detail-card-header">
+                <div class="detail-card-name ${a.is_best?'best-name':''}">${a.is_best?'⭐ ':''}${a.name}</div>
+                <span class="paradigm-badge ${pClass(a.paradigm)}">${a.paradigm}</span>
+            </div>
+            <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px">${a.description}</div>
+            <div class="detail-section-title pros-title">✓ Advantages</div>
+            <ul class="detail-list pros">${a.pros.map(p=>`<li>${p}</li>`).join('')}</ul>
+            <div class="detail-section-title cons-title">✗ Limitations</div>
+            <ul class="detail-list cons">${a.cons.map(c=>`<li>${c}</li>`).join('')}</ul>
+            <div class="detail-section-title when-title">◉ Best When</div>
+            <ul class="detail-list when">${a.best_when.map(w=>`<li>${w}</li>`).join('')}</ul>
+            ${a.is_best
+                ?`<div class="why-chosen-banner">✓ CHOSEN — Fastest benchmark time and well-suited for the detected input characteristics.</div>`
+                :`<div class="why-not-banner">✗ NOT CHOSEN — ${a.cons[0]}${a.speedup_vs_best?` (${a.speedup_vs_best}× slower in benchmark)`:''}</div>`}
+        </div>`).join('');
+}
+</script>
 </body>
 </html>
